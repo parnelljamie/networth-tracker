@@ -1,6 +1,6 @@
 [project]
 name = "networth-tracker"
-version = "0.5.3"
+version = "0.6.0"
 description = "Local household net worth tracker (UK)"
 requires-python = ">=3.12"
 dependencies = [

@@ -780,7 +780,7 @@ wheels = [
 
 [[package]]
 name = "networth-tracker"
-version = "0.5.3"
+version = "0.6.0"
 source = { virtual = "." }
 dependencies = [
     { name = "alembic" },
