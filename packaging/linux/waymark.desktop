@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Waymark
+GenericName=Net worth tracker
+Comment=Track your household net worth
+Exec=/opt/waymark/waymark
+Icon=waymark
+Terminal=false
+Categories=Office;Finance;
+StartupWMClass=waymark

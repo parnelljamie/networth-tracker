@@ -1,0 +1,54 @@
+[project]
+name = "networth-tracker"
+version = "0.5.3"
+description = "Local household net worth tracker (UK)"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "sqlalchemy>=2.0",
+    "alembic",
+    "pydantic>=2",
+    "pydantic-settings",
+    "yfinance",
+    "pandas",
+    "numpy",
+    "apscheduler>=3.10,<4",
+    "tzdata",
+    "python-multipart",
+    # New in Phase 7 (docs/01-architecture.md "Runtime", BUILD_PLAN Phase 7 task 5): pywebview
+    # wraps the local server in a native window for scripts/desktop.py. Phase 9's launcher.py
+    # will reuse it for the installed app, so pulling it in now avoids a second dependency add.
+    "pywebview",
+    # Linux build only: pywebview's Qt backend with PySide6 (LGPL). Qt WebEngine bundles into
+    # the PyInstaller build cleanly, whereas the default GTK/WebKit backend depends on system
+    # libraries that can't be frozen reliably. Windows keeps using Edge WebView2.
+    "qtpy; sys_platform == 'linux'",
+    "pyside6; sys_platform == 'linux'",
+    # Phase 11 (docs/07-mobile.md): the PC replays a phone's changes into its own API in-process
+    # (httpx.ASGITransport) and the phone calls the PC. Already locked for FastAPI's TestClient.
+    "httpx",
+]
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "ruff",
+    "freezegun",
+    # Phase 9: builds the frozen Waymark.exe (packaging/waymark.spec). Dev-only; the
+    # installed app never needs PyInstaller itself.
+    "pyinstaller",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+# B008: FastAPI's `Depends()`-as-default-argument is the framework's idiomatic DI pattern.
+ignore = ["E501", "B008"]

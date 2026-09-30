@@ -1,0 +1,85 @@
+# docs/07-mobile.md "Distribution": a debug APK of the Android app, built from this commit and
+# kept as a workflow artifact for testing. Signed release APKs come from release.yml.
+name: Android
+
+on:
+  push:
+    paths:
+      - "android/**"
+      - "backend/app/**"
+      - "backend/alembic/**"
+      - "frontend/**"
+      - ".github/workflows/android.yml"
+  pull_request:
+    paths:
+      - "android/**"
+      - "backend/app/**"
+      - "frontend/**"
+  workflow_dispatch:
+
+permissions:
+  contents: write  # to publish the test build as a pre-release
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Build the web UI
+        working-directory: frontend
+        run: npm ci && npm run build
+
+      # Chaquopy compiles the Python it bundles with a host Python of the same version.
+      - name: Check the build Python
+        run: python3.12 --version
+
+      - name: What Chaquopy's package repository offers (for diagnosing pip failures)
+        continue-on-error: true
+        run: |
+          for p in pydantic-core numpy markupsafe greenlet; do
+            echo "== chaquo: $p"
+            curl -s --max-time 20 "https://chaquo.com/pypi-13.1/$p/" | grep -o '[^"/>]*\.whl' | sort -u | grep arm64 | tail -12 || true
+          done
+          echo "== beeware: pydantic-core"
+          curl -s --max-time 20 "https://pypi.anaconda.org/beeware/simple/pydantic-core/" | grep -o '[^"/>]*\.whl' | sort -u | grep -i android | tail -12 || true
+
+      # FastAPI's pydantic-core is Rust with no Android build anywhere: cross-compile it with the
+      # runner's NDK.
+      - name: Build pydantic-core for Android
+        run: android/wheels/build-pydantic-core.sh android/wheels/dist
+
+      - name: Build the debug APK
+        working-directory: android
+        run: ./gradlew --no-daemon --stacktrace assembleDebug
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: waymark-debug-apk
+          # Only needed until the run (or a re-run) finishes; stops them filling the storage quota.
+          retention-days: 7
+          path: android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+
+      # Artifacts don't show in GitHub's mobile app, so also put the APK where a phone can get
+      # it: one rolling pre-release, replaced by every push. Signed releases come from release.yml.
+      - name: Publish as the "Android test build" pre-release
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' backend/app/__init__.py)
+          cp android/app/build/outputs/apk/debug/app-debug.apk "waymark-$version-test.apk"
+          gh release delete android-test --yes --cleanup-tag || true
+          gh release create android-test "waymark-$version-test.apk" \
+            --prerelease --target "$GITHUB_SHA" --title "Android test build" \
+            --notes "Test build of the Android app from ${GITHUB_REF_NAME} at ${GITHUB_SHA::7}, replaced by every push. Open the .apk on the phone to install it; see README 'Android phone'."

@@ -1,0 +1,5 @@
+date,type,symbol,isin,name,units,price,currency,fx_gbp_per_unit,amount_gbp,fees_gbp,contribution_source,external_id,notes
+2021-04-06,DEPOSIT,,,,,,GBP,1,20000.00,0,personal,ext-1,Tax year subscription
+2021-04-07,BUY,VUSA.L,IE00B3XXRP09,Vanguard S&P 500 UCITS ETF,300,65.12,GBP,1,-19536.00,0,,ext-2,
+2021-06-30,DIVIDEND,VUSA.L,,,,,GBP,1,41.22,0,,ext-3,
+2021-09-01,BUY,VUSA.L,IE00B3XXRP09,Vanguard S&P 500 UCITS ETF,50,70.00,GBP,1,-3500.00,0,,ext-4,

@@ -1,0 +1,65 @@
+# The checks from CONTRIBUTING.md "Before you open a pull request", run on every push and pull request.
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.1.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+      - run: uv python install 3.12
+      - run: uv sync --locked
+      - run: uv run ruff check .
+      - run: uv run pytest -q
+      - name: Export OpenAPI schema for the frontend job
+        env:
+          NW_DATA_DIR: ${{ runner.temp }}/nw-data
+        run: uv run python -c "import json; from app.main import app; print(json.dumps(app.openapi()))" > "$RUNNER_TEMP/openapi.json"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: openapi
+          # Only needed until the run (or a re-run) finishes; stops them filling the storage quota.
+          retention-days: 1
+          path: ${{ runner.temp }}/openapi.json
+
+  frontend:
+    runs-on: ubuntu-latest
+    needs: backend
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+      - uses: actions/download-artifact@v8
+        with:
+          name: openapi
+          path: ${{ runner.temp }}
+      - name: API types are up to date (run `npm run gen:api` if this fails)
+        run: |
+          npx openapi-typescript "$RUNNER_TEMP/openapi.json" -o "$RUNNER_TEMP/schema.d.ts" --default-non-nullable false
+          diff <(tr -d '\r' < src/api/schema.d.ts) <(tr -d '\r' < "$RUNNER_TEMP/schema.d.ts")

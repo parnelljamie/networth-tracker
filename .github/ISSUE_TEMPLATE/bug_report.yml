@@ -1,0 +1,48 @@
+name: Bug report
+description: Something in Waymark doesn't work the way it should
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report this. **Please don't paste real account numbers, balances,
+        API keys or exported data** — this issue is public. Made-up numbers that show the problem are perfect.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what did Waymark do instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Go to …
+        2. Click …
+        3. See …
+  - type: input
+    id: version
+    attributes:
+      label: Waymark version
+      description: Shown in Settings → Updates.
+      placeholder: "0.6.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Where are you running it?
+      options:
+        - Windows
+        - Linux
+        - Android
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log excerpt (optional)
+      description: From `logs/launcher.log` in the data folder (Settings → Data → Open folder). Check it for anything private first.
+      render: text

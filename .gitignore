@@ -1,0 +1,29 @@
+# personal financial data never goes into git
+# (data/imports/<batch_id>/ — uploaded import files — is already covered by data/ above; a
+# bare `imports/` here would also match backend/tests/fixtures/imports/, which must be tracked)
+data/
+*.db
+*.db-wal
+*.db-shm
+
+# python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+
+# node
+node_modules/
+frontend/dist/
+
+# Phase 9: PyInstaller / Inno Setup build output (scripts/build-installer.ps1)
+/dist/
+/build/
+packaging/_version_info.txt
+
+# editors / OS
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store

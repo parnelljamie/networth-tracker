@@ -1,0 +1,13 @@
+#!/bin/sh
+# Your data in ~/.local/share/Waymark is never touched here (same default as the Windows
+# uninstaller: keep it). Only the AppArmor profile postinst wrote is removed.
+set -e
+if [ "$1" = "remove" ] || [ "$1" = "purge" ]; then
+    if [ -f /etc/apparmor.d/waymark ]; then
+        if command -v apparmor_parser >/dev/null 2>&1; then
+            apparmor_parser -R /etc/apparmor.d/waymark 2>/dev/null || true
+        fi
+        rm -f /etc/apparmor.d/waymark
+    fi
+fi
+exit 0

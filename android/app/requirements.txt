@@ -1,0 +1,17 @@
+# Python packages for the phone (docs/07-mobile.md "Android shell"). The backend's own list minus
+# what the phone doesn't run: yfinance (and pandas/curl_cffi) — prices come from
+# app/providers/yahoo_http.py; uvicorn's compiled extras; pywebview/Qt. Pure-Python packages are
+# pinned to backend/uv.lock. numpy and markupsafe (via mako) are compiled and left for Chaquopy's
+# Android package repository to pick a build it has. pydantic's compiled core has no Android
+# build anywhere: android/wheels/build-pydantic-core.sh makes one, for the version uv.lock pins.
+alembic==1.20.0
+apscheduler==3.11.3
+fastapi==0.141.1
+httpx==0.28.1
+numpy
+pydantic==2.13.5
+pydantic-settings==2.15.0
+python-multipart==0.0.32
+sqlalchemy==2.0.53
+tzdata==2026.4
+uvicorn==0.53.0

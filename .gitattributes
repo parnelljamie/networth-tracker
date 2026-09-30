@@ -1,0 +1,8 @@
+# Scripts that run on Linux must keep LF endings even when edited on Windows.
+*.sh text eol=lf
+packaging/linux/* text eol=lf
+packaging/*.png binary
+android/gradlew text eol=lf
+android/gradlew.bat text eol=crlf
+*.jar binary
+android/app/src/main/res/**/*.png binary

@@ -1,0 +1,80 @@
+<title>Waymark</title>
+<meta name="description" content="Clickable mockup of a household net worth tracker, with sample data.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="styles.css">
+
+<div class="app" id="app">
+  <aside class="rail" id="rail" aria-label="Main navigation">
+    <div class="brand">
+      <a class="brand-mark" href="#/overview">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3V4z"/><path d="M5 17a3 3 0 0 1 3-3h11"/><path d="M9 8h6"/></svg>
+        Waymark
+      </a>
+      <button class="icon-btn rail-close" type="button" data-action="close-rail" aria-label="Close menu">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
+    <div class="rail-total">
+      <span class="eyebrow">Household net worth</span>
+      <span class="rail-figure" id="rail-total"></span>
+      <span id="rail-day" class="caption"></span>
+    </div>
+    <nav class="nav" id="nav"></nav>
+    <div class="rail-foot">
+      <span class="price-pill" id="price-pill"><i></i><span id="price-text">Prices live · 3 min ago</span></span>
+      <span>
+        <button class="icon-btn" type="button" data-action="toggle-theme" aria-label="Switch light or dark theme">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 0 0 16z" fill="currentColor"/></svg>
+        </button>
+        <button class="icon-btn" type="button" id="privacy-btn" data-action="toggle-privacy" aria-pressed="false" aria-label="Hide figures (Shift+P)">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
+        </button>
+      </span>
+    </div>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <div class="topbar-title">
+        <button class="icon-btn menu-btn" type="button" data-action="open-rail" aria-label="Open menu">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+        </button>
+        <h1 id="page-title">Overview</h1>
+        <span class="sample-pill">Sample data</span>
+      </div>
+      <div class="topbar-actions">
+        <button class="btn ghost" type="button" data-action="palette" aria-label="Search and commands (Ctrl+K)">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+          <span class="hide-md">Search</span><kbd class="hide-md">Ctrl K</kbd>
+        </button>
+        <button class="btn ghost" type="button" id="refresh-btn" data-action="refresh-prices">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v5h-5"/></svg>
+          <span class="hide-md">Refresh prices</span>
+        </button>
+        <div class="pop-wrap">
+          <button class="icon-btn" type="button" id="pending-btn" data-action="toggle-pending" aria-expanded="false" aria-label="Purchases waiting for confirmation">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 16V11a6 6 0 1 1 12 0v5l1.5 2h-15z"/><path d="M10 20a2 2 0 0 0 4 0"/></svg>
+            <span class="badge" id="pending-badge">3</span>
+          </button>
+          <div class="popover" id="pending-pop" hidden></div>
+        </div>
+        <button class="btn primary" type="button" data-action="quick-update">Quick update</button>
+      </div>
+    </header>
+    <main class="page" id="page" tabindex="-1"></main>
+  </div>
+</div>
+
+<div class="scrim" id="scrim" data-action="close-overlays" hidden></div>
+<aside class="sheet" id="sheet" aria-label="Quick update" hidden></aside>
+<div class="dialog" id="dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-title" hidden></div>
+<div class="palette" id="palette" role="dialog" aria-label="Search and commands" hidden></div>
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
+<script src="data.js"></script>
+<script src="charts.js"></script>
+<script src="app.js"></script>
+<script src="pages.js"></script>
+<script src="pages2.js"></script>

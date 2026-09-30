@@ -1,0 +1,31 @@
+#!/bin/sh
+# Ubuntu 24.04+ blocks unprivileged user namespaces unless an AppArmor profile allows them,
+# and Qt WebEngine (Chromium) needs one for its sandbox. Same fix Chrome and VS Code ship.
+# Only written where AppArmor 4 is present; older releases don't restrict namespaces.
+set -e
+if [ "$1" = "configure" ] && [ -f /etc/apparmor.d/abi/4.0 ]; then
+    cat > /etc/apparmor.d/waymark <<'PROFILE'
+abi <abi/4.0>,
+include <tunables/global>
+
+profile waymark /opt/waymark/waymark flags=(unconfined) {
+  userns,
+  include if exists <local/waymark>
+}
+
+profile waymark-webengine /opt/waymark/_internal/PySide6/Qt/libexec/QtWebEngineProcess flags=(unconfined) {
+  userns,
+  include if exists <local/waymark-webengine>
+}
+PROFILE
+    if command -v apparmor_parser >/dev/null 2>&1 && aa-enabled --quiet 2>/dev/null; then
+        apparmor_parser -r -T -W /etc/apparmor.d/waymark || true
+    fi
+fi
+if command -v update-desktop-database >/dev/null 2>&1; then
+    update-desktop-database -q /usr/share/applications || true
+fi
+if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+    gtk-update-icon-cache -q -t /usr/share/icons/hicolor || true
+fi
+exit 0

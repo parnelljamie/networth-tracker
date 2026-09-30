@@ -1,0 +1,298 @@
+# Builds the Windows installer, the Linux .deb and the signed Android APK from the same commit.
+# Pushing a tag like v0.2.0 also publishes all three to a GitHub Release; "Run workflow" (manual) just builds and
+# tests them, leaving the files as workflow artifacts.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  linux:
+    # Built on the oldest supported Ubuntu so the bundled binaries run on it and anything newer.
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.1.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: uv python install 3.12
+      - name: Tag matches the app version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          version="$(sed -nE 's/^__version__ = "([^"]+)"/\1/p' backend/app/__init__.py)"
+          [ "v$version" = "$GITHUB_REF_NAME" ] || { echo "Tag $GITHUB_REF_NAME != app version $version (backend/app/__init__.py)"; exit 1; }
+      - run: ./scripts/build-linux.sh
+      - uses: actions/upload-artifact@v7
+        with:
+          name: linux-deb
+          # Only needed until the run (or a re-run) finishes; stops them filling the storage quota.
+          retention-days: 7
+          path: dist/waymark_*_amd64.deb
+          if-no-files-found: error
+
+  linux-install-test:
+    # Installs the .deb the way a user would and opens the app on a virtual display: proves the
+    # package's dependencies resolve, the server starts, and the Qt WebEngine window renders.
+    needs: linux
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: linux-deb
+      - name: Install the .deb
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q ./waymark_*_amd64.deb xvfb imagemagick
+          echo "userns restriction: $(sysctl -n kernel.apparmor_restrict_unprivileged_userns 2>/dev/null || echo n/a)"
+          ls -la /etc/apparmor.d/waymark 2>/dev/null || echo "no AppArmor profile written (expected before 24.04)"
+      - name: Report bundled libraries with unmet system dependencies
+        run: |
+          find /opt/waymark -type f \( -name '*.so*' -o -name QtWebEngineProcess -o -name waymark \) |
+            while read -r f; do
+              missing="$(ldd "$f" 2>/dev/null | grep "not found" | awk '{print $1}' | xargs)"
+              [ -n "$missing" ] && echo "${f#/opt/waymark/_internal/}: $missing"
+            done || true
+          echo "Core libraries (these must resolve):"
+          ! ldd /opt/waymark/_internal/PySide6/Qt/lib/libQt6WebEngineCore.so.6 /opt/waymark/_internal/PySide6/Qt/libexec/QtWebEngineProcess /opt/waymark/_internal/PySide6/Qt/plugins/platforms/libqxcb.so | grep "not found"
+      - name: Pretend this is an upgrade from Passbook
+        # The app was called Passbook until 0.5.2; its first launch should move that data folder.
+        run: mkdir -p ~/.local/share/Passbook && echo kept > ~/.local/share/Passbook/marker
+      - name: Launch Waymark and check it answers
+        run: |
+          Xvfb :99 -screen 0 1400x900x24 &
+          export DISPLAY=:99
+          sleep 2
+          waymark > launch.out 2>&1 &
+          for i in $(seq 1 60); do
+            port="$(python3 -c 'import json,pathlib; print(json.loads((pathlib.Path.home()/".local/share/Waymark/server.json").read_text())["port"])' 2>/dev/null || true)"
+            [ -n "$port" ] && curl -fsS "http://127.0.0.1:$port/api/health" && break
+            sleep 1
+          done
+          [ -n "$port" ] || { cat launch.out; exit 1; }
+          sleep 15  # let the window finish rendering the dashboard
+          pgrep -fa QtWebEngineProcess || { echo "No Qt WebEngine process: the window didn't open"; cat launch.out; exit 1; }
+          import -window root -display :99 screenshot.png
+      - name: The Passbook data folder moved to Waymark
+        run: |
+          [ "$(cat ~/.local/share/Waymark/marker)" = kept ]
+          [ ! -e ~/.local/share/Passbook ]
+      - name: Autostart on/off
+        run: |
+          waymark --autostart on
+          grep -q "Exec=/opt/waymark/waymark --background" ~/.config/autostart/waymark.desktop
+          waymark --autostart off
+          [ ! -e ~/.config/autostart/waymark.desktop ]
+      - name: Collect logs
+        if: always()
+        run: |
+          cp ~/.local/share/Waymark/logs/launcher.log . 2>/dev/null || true
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: linux-install-test-${{ matrix.os }}
+          # Only needed until the run (or a re-run) finishes; stops them filling the storage quota.
+          retention-days: 7
+          path: |
+            screenshot.png
+            launch.out
+            launcher.log
+
+  linux-clean-install-test:
+    # A bare distro image has nothing preinstalled, so this proves the .deb's Depends line is
+    # complete (the runner images above already carry most desktop libraries).
+    needs: linux
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ["ubuntu:22.04", "ubuntu:24.04", "debian:12"]
+    runs-on: ubuntu-latest
+    container: ${{ matrix.image }}
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: linux-deb
+      - name: Install the .deb on a bare image
+        run: |
+          apt-get update -q
+          DEBIAN_FRONTEND=noninteractive apt-get install -y -q ./waymark_*_amd64.deb xvfb curl procps
+      - name: Every bundled library resolves
+        run: |
+          missing="$(find /opt/waymark -type f \( -name '*.so*' -o -name QtWebEngineProcess -o -name waymark \) \
+            -exec ldd {} \; 2>/dev/null | grep 'not found' | sort -u || true)"
+          [ -z "$missing" ] || { echo "$missing"; exit 1; }
+      - name: Launch Waymark and check it answers
+        env:
+          # Containers run as root, where Chromium refuses its sandbox; the runner-image job
+          # above covers the sandbox (and Ubuntu 24.04's AppArmor rule) as a normal user.
+          QTWEBENGINE_DISABLE_SANDBOX: "1"
+        run: |
+          Xvfb :99 -screen 0 1400x900x24 &
+          export DISPLAY=:99
+          sleep 2
+          waymark > launch.out 2>&1 &
+          for i in $(seq 1 60); do
+            port="$(sed -nE 's/.*"port": *([0-9]+).*/\1/p' ~/.local/share/Waymark/server.json 2>/dev/null || true)"
+            [ -n "$port" ] && curl -fsS "http://127.0.0.1:$port/api/health" && break
+            sleep 1
+          done
+          [ -n "$port" ] || { cat launch.out; exit 1; }
+          sleep 15
+          pgrep -fa QtWebEngineProcess || { echo "No Qt WebEngine process: the window didn't open"; cat launch.out; exit 1; }
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.1.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: uv python install 3.12
+      - name: Install Inno Setup
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress
+          $iscc = Get-ChildItem "${env:ProgramFiles(x86)}", "$env:ProgramFiles" -Recurse -Filter ISCC.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $iscc) { throw "ISCC.exe not found after installing Inno Setup" }
+          Add-Content $env:GITHUB_PATH $iscc.DirectoryName
+      - name: Build installer
+        shell: pwsh
+        run: ./scripts/build-installer.ps1
+      - uses: actions/upload-artifact@v7
+        with:
+          name: windows-installer
+          # Only needed until the run (or a re-run) finishes; stops them filling the storage quota.
+          retention-days: 7
+          path: dist/WaymarkSetup-*.exe
+          if-no-files-found: error
+
+  # docs/07-mobile.md "Distribution": the phone app, signed with the key in the repository secrets
+  # when they exist.
+  # The PC and phone only sync on the same schema revision, so it's built from the same commit.
+  android:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Build the web UI
+        working-directory: frontend
+        run: npm ci && npm run build
+      # Chaquopy compiles the Python it bundles with a host Python of the same version.
+      - name: Check the build Python
+        run: python3.12 --version
+      - name: Build pydantic-core for Android
+        run: android/wheels/build-pydantic-core.sh android/wheels/dist
+      # Optional: without the secrets, build.gradle.kts signs with the runner's debug key, so the
+      # phone needs an uninstall (and a resync from the PC) to take each release.
+      - name: Decode the signing key
+        env:
+          ANDROID_KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+        run: |
+          [ -n "$ANDROID_KEYSTORE_B64" ] || { echo "::notice::No ANDROID_KEYSTORE_B64 secret: signing with the debug key"; exit 0; }
+          echo "$ANDROID_KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/waymark.keystore"
+          echo "ANDROID_KEYSTORE_FILE=$RUNNER_TEMP/waymark.keystore" >> "$GITHUB_ENV"
+      - name: Build the release APK
+        working-directory: android
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: ./gradlew --no-daemon --stacktrace assembleRelease
+      - name: Name it for the release
+        run: |
+          version="$(sed -nE 's/^__version__ = "([^"]+)"/\1/p' backend/app/__init__.py)"
+          apk=android/app/build/outputs/apk/release/app-release.apk
+          [ -f "$apk" ] || { echo "No APK at $apk"; ls -R android/app/build/outputs/apk; exit 1; }
+          mkdir -p dist && cp "$apk" "dist/waymark-$version.apk"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: android-apk
+          # Only needed until the run (or a re-run) finishes; stops them filling the storage quota.
+          retention-days: 7
+          path: dist/waymark-*.apk
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [linux-install-test, linux-clean-install-test, windows, android]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: linux-deb
+      - uses: actions/download-artifact@v8
+        with:
+          name: windows-installer
+      - uses: actions/download-artifact@v8
+        with:
+          name: android-apk
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        # Skipped when the release already exists, so "Re-run failed jobs" can retry the step below.
+        run: |
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            echo "Release $GITHUB_REF_NAME already exists on $GITHUB_REPOSITORY"
+            exit 0
+          fi
+          gh release create "$GITHUB_REF_NAME" waymark_*_amd64.deb WaymarkSetup-*.exe waymark-*.apk \
+            --repo "$GITHUB_REPOSITORY" --title "Waymark ${GITHUB_REF_NAME#v}" --generate-notes
+      # Versions up to 0.5.2 (called Passbook) check this public repo for updates, and only
+      # recognise the old file names, so the same files go there under those names. Needs a
+      # RELEASES_TOKEN secret: a fine-grained token with Contents read/write on that repo only.
+      # Skipped (with a warning) until the secret is set. Newer versions read this repo's own
+      # releases, so once nobody is on 0.5.2 or older this step and the secret can go.
+      - name: Publish for Passbook-era installs
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          RELEASES_REPO: parnelljamie/waymark-releases
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::warning::RELEASES_TOKEN isn't set, so installs from before the rename won't see this release in Settings -> Updates."
+            exit 0
+          fi
+          # A pasted token can pick up a stray newline or control character, which Go's HTTP client
+          # rejects with a bare "invalid header field value". Trim whitespace and say what's wrong.
+          GH_TOKEN="$(printf '%s' "$GH_TOKEN" | tr -d '[:space:]')"
+          if ! printf '%s' "$GH_TOKEN" | grep -Eq '^(github_pat_|ghp_)[A-Za-z0-9_]+$'; then
+            echo "::error::RELEASES_TOKEN doesn't look like a GitHub token (it should start github_pat_ and hold only letters, digits and _). Set it again with: gh secret set RELEASES_TOKEN"
+            exit 1
+          fi
+          export GH_TOKEN
+          if gh release view "$GITHUB_REF_NAME" --repo "$RELEASES_REPO" > /dev/null 2>&1; then
+            echo "Release $GITHUB_REF_NAME already exists on $RELEASES_REPO"
+            exit 0
+          fi
+          mkdir legacy
+          for f in waymark_*_amd64.deb waymark-*.apk; do cp "$f" "legacy/passbook${f#waymark}"; done
+          for f in WaymarkSetup-*.exe; do cp "$f" "legacy/Passbook${f#Waymark}"; done
+          gh release create "$GITHUB_REF_NAME" legacy/* \
+            --repo "$RELEASES_REPO" --title "Waymark ${GITHUB_REF_NAME#v}" \
+            --notes "Passbook is now called Waymark. Update from Settings -> Updates in the app; it moves your data across by itself. New downloads live at https://github.com/${GITHUB_REPOSITORY}/releases"

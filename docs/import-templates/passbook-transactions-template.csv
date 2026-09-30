@@ -1,0 +1,15 @@
+date,type,symbol,isin,name,units,price,currency,fx_gbp_per_unit,amount_gbp,fees_gbp,contribution_source,external_id,notes
+2024-04-05,OPENING_BALANCE,,,,,,GBP,1,250.00,0,,tpl-001,Cash already in the account before this history starts
+2024-04-05,OPENING_BALANCE,VWRL.L,IE00B3RBWM25,Vanguard FTSE All-World UCITS ETF,40,98.50,GBP,1,0,0,,tpl-002,Holding already owned - price = average cost per unit
+2024-04-06,DEPOSIT,,,,,,GBP,1,5000.00,0,personal,tpl-003,Money paid in by you
+2024-04-06,DEPOSIT,,,,,,GBP,1,1250.00,0,tax_relief,tpl-004,Pension tax relief top-up
+2024-04-08,BUY,VUSA.L,IE00B3XXRP09,Vanguard S&P 500 UCITS ETF,50,82.10,GBP,1,-4110.00,5.00,,tpl-005,amount = -(units x price x fx + fees)
+2024-04-09,BUY,AAPL,US0378331005,Apple Inc,5,170.00,USD,0.79,-671.50,0,,tpl-006,Foreign price in native currency; fx = GBP per 1 USD
+2024-06-28,DIVIDEND,VUSA.L,IE00B3XXRP09,Vanguard S&P 500 UCITS ETF,,,GBP,1,18.42,0,,tpl-007,
+2024-06-30,INTEREST,,,,,,GBP,1,3.15,0,,tpl-008,Interest on cash
+2024-06-30,FEE,,,,,,GBP,1,-12.50,0,,tpl-009,Platform fee
+2024-09-02,SELL,VUSA.L,IE00B3XXRP09,Vanguard S&P 500 UCITS ETF,20,88.00,GBP,1,1755.00,5.00,,tpl-010,amount = units x price x fx - fees
+2024-09-03,TAX,,,,,,GBP,1,-7.20,0,,tpl-011,Withholding tax
+2024-10-01,TRANSFER_IN,HMWO.L,IE00B4X9L533,HSBC MSCI World UCITS ETF,100,27.40,GBP,1,0,0,transfer,tpl-012,In-specie transfer in - price = original average cost
+2024-11-15,TRANSFER_OUT,VWRL.L,IE00B3RBWM25,Vanguard FTSE All-World UCITS ETF,10,,GBP,1,0,0,,tpl-013,In-specie transfer out - no gain realised
+2025-01-10,WITHDRAWAL,,,,,,GBP,1,-500.00,0,,tpl-014,Money taken out

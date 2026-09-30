@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- docs/05-ui.md tokens: page and surface, dark. -->
+    <color name="page">#15130F</color>
+    <color name="surface">#1D1A15</color>
+</resources>
