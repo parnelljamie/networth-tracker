@@ -27,7 +27,7 @@ body:
     attributes:
       label: Waymark version
       description: Shown in Settings → Updates.
-      placeholder: "0.6.0"
+      placeholder: "0.6.1"
     validations:
       required: true
   - type: dropdown
