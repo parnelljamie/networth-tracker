@@ -20,6 +20,24 @@ export function useInstruments() {
   })
 }
 
+/** The latest stored close on or before `date` (looking back up to two weeks, to cover weekends and
+ * bank holidays), or null when none is stored. Reads the local price table only. */
+export function useInstrumentPriceOn(instrumentId: number | undefined, date: string | undefined) {
+  return useQuery({
+    queryKey: ["instruments", "price-on", instrumentId, date],
+    enabled: instrumentId !== undefined && !!date,
+    queryFn: async () => {
+      const to = new Date(`${date}T00:00:00Z`)
+      const from = new Date(to.getTime() - 14 * 86_400_000).toISOString().slice(0, 10)
+      const { data, error } = await apiClient.GET("/api/instruments/{instrument_id}/prices", {
+        params: { path: { instrument_id: instrumentId! }, query: { date_from: from, date_to: date } },
+      })
+      if (error) throw error
+      return data.length > 0 ? data[data.length - 1] : null
+    },
+  })
+}
+
 /** Changing a manual price or what it follows rebuilds history in the background, so values,
  * holdings and charts are refetched now and again once that's had a moment. */
 export function useUpdateInstrument() {
