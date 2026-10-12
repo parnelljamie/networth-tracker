@@ -34,7 +34,9 @@ export function OwnersEditor({ people, value, onChange, singleOwner }: OwnersEdi
           onValueChange={(personId) => onChange([{ personId: Number(personId), share: 1 }])}
         >
           <SelectTrigger className="w-full">
-            <SelectValue placeholder="Choose a person" />
+            <SelectValue placeholder="Choose a person">
+              {(v: string | null) => people.find((p) => p.id.toString() === v)?.name ?? "Choose a person"}
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
             {people.map((p) => (
