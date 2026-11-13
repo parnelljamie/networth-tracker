@@ -240,6 +240,10 @@ checks the key against the account summary, 422 on a bad key or non-GBP account)
 message, transactions, holdings, cash_before_gbp, cash_after_gbp, unmatched_instruments, ledger_warnings,
 ready}`, no network) and `POST /trading212/links/{account_id}/accept` (commits the waiting sync,
 replacing stand-ins for its holdings; 409 when nothing is waiting).
+`POST /trading212/live` (the Live page calls it every 20 seconds while open; POST because it goes to
+the network) takes Trading 212's current prices for every linked account's holdings and returns
+`[{account_id, status: ok | busy | error, message, priced, units_differ, fetched_at}]`.
+`InstrumentOut.last_bar_date` is the trading day of the latest quote.
 `AccountDetail.broker_sync` is `"trading212"` for a linked account.
 
 ## Sync (Phase 11)

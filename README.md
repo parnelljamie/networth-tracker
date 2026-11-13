@@ -110,6 +110,10 @@ pairing, though Windows may ask once more whether to let Waymark through the fir
   year to date and year. It has a history chart where each category can be shown or hidden, with
   every person's age under the date axis. It also shows allocation, liquidity and debt, the
   per-person split, today's movers, ISA allowance, upcoming regular payments and milestones.
+- **Live**: your shares and funds as they stand now: total value, today's move, a value chart
+  from a week to all time, and every holding with a 30-day sparkline, price, today's change and
+  total return. With a Trading 212 account connected it shows Trading 212's own live prices while
+  the page is open. You can make it the page Waymark opens on (Settings → Start page).
 - **Person**: the same view for one person, with their accounts.
 - **Property & Mortgage**: value against mortgage balance, equity and loan-to-value, mortgage-free
   date, rate periods, the full amortisation schedule (exportable to CSV), an overpayment simulator,
@@ -133,7 +137,7 @@ pairing, though Windows may ask once more whether to let Waymark through the fir
   `docs/import-templates/`) or a bank statement CSV. Each import shows a reconciliation before it is
   committed and can be undone.
 - **Settings**: people, Trading 212, phone sync, data (backups, a second backup folder, JSON export),
-  updates and about.
+  start page, updates and about.
 
 **Also**
 - **Quick update**: one dialog for entering this month's balances in one go.
@@ -148,7 +152,8 @@ pairing, though Windows may ask once more whether to let Waymark through the fir
 **Runs in the background**
 | When | What |
 |---|---|
-| Every 15 minutes, weekdays 08:00–21:45 | Refresh prices and exchange rates |
+| Every 15 minutes, weekdays 08:00–21:45, and at startup | Refresh prices and exchange rates |
+| Every 20 seconds while the Live page is open | Read live prices from Trading 212, if an account is connected |
 | Daily at 07:00, and at startup | Record due regular payments as pending transactions to confirm |
 | Daily at 22:15 | Take the day's snapshot of every account |
 | Daily at 22:30, and when the app closes | Back up the database (and copy to a second folder if set) |

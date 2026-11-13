@@ -1,4 +1,7 @@
-/** The main sections, in masthead order. People sits second as a menu of each person. */
+/** Shown straight after Overview: shares and funds as they stand now. */
+export const LIVE_LINK = { to: "/live", label: "Live" }
+
+/** The main sections, in masthead order, after Overview, Live and the People menu. */
 export const SECTION_LINKS = [
   { to: "/property", label: "Property" },
   { to: "/pensions", label: "Pensions" },

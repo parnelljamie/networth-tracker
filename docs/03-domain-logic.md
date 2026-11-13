@@ -163,6 +163,17 @@ price_gbp, fixed = fix_pence_glitch(price_gbp, instrument.last_price_gbp or prev
 The scheduled job and the startup refresh pass `force=True`: step 3 would otherwise skip a tick
 that lands a fraction of a second short of the interval after the previous one.
 
+### Broker live prices (`price_service.set_broker_price`, `trading212_service.refresh_live_prices`)
+While the Live page is open it posts to `/trading212/live`, which reads each linked account's open
+positions from Trading 212 and takes `walletImpact.currentValue / quantity` as the instrument's
+`last_price_gbp` (already in GBP, so pence and foreign currencies need no conversion here).
+- Only Yahoo-priced instruments, matched by the alias the sync saved, else by ISIN. A price more
+  than 1.5x away from the one already held is ignored: the ticker was matched to another listing.
+- For 3 minutes after a broker price, `refresh_quotes` leaves `last_price_gbp` alone and still
+  updates `prev_close_gbp`, `last_bar_date` and history, so the value doesn't flick between sources.
+- Units that differ from the ledger's mean a trade the sync hasn't brought in: a background sync
+  is started, at most every 10 minutes. Results are reused for 10 seconds per account.
+
 ### History backfill (`ensure_history(db, instrument_ids, start, end)`)
 Find missing trading ranges per instrument (compare against existing `instrument_prices` dates;
 ignore weekends), fetch history in chunks, normalise each close with the FX close for the same date

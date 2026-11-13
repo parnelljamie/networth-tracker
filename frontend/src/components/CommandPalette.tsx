@@ -22,6 +22,7 @@ import { togglePrivacyMode } from "@/lib/privacy"
 
 const PAGE_COMMANDS = [
   { label: "Overview", to: "/" },
+  { label: "Live", to: "/live" },
   { label: "Property & Mortgage", to: "/property" },
   { label: "Other assets", to: "/other" },
   { label: "Projections", to: "/projections" },

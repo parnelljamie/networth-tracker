@@ -14,7 +14,7 @@ import { toggleTheme, useTheme } from "@/lib/theme"
 import { cn } from "@/lib/utils"
 import { HealthDot } from "./HealthDot"
 import { Wordmark } from "./Masthead"
-import { SECTION_LINKS, TOOL_LINKS } from "./nav"
+import { LIVE_LINK, SECTION_LINKS, TOOL_LINKS } from "./nav"
 
 const rowClass = ({ isActive }: { isActive: boolean }) =>
   cn(
@@ -69,6 +69,9 @@ export function NavDrawer({ open, onOpenChange }: { open: boolean; onOpenChange:
           <div className="my-2 border-t border-border" />
           <NavLink to="/" end className={rowClass} onClick={close}>
             Overview
+          </NavLink>
+          <NavLink to={LIVE_LINK.to} className={rowClass} onClick={close}>
+            {LIVE_LINK.label}
           </NavLink>
           {SECTION_LINKS.map((l) => (
             <NavLink key={l.to} to={l.to} className={rowClass} onClick={close}>

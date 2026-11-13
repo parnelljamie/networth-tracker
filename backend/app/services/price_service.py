@@ -160,6 +160,37 @@ def day_change_contribution(instrument: Instrument, units: float, on: date, db: 
 _refresh_lock = threading.Lock()
 _backoff_until: datetime | None = None
 
+# A broker's own live price (Trading 212) is fresher than Yahoo's delayed daily bar. While one
+# is this recent, the Yahoo refresh leaves the instrument's price alone and only updates the
+# previous close, bar date and history, so the value doesn't flick back and forth between sources.
+BROKER_PRICE_HOLD = timedelta(minutes=3)
+# A broker price further than this from the price already held means the broker's ticker was
+# matched to the wrong instrument (another share class or listing); it is not applied.
+BROKER_PRICE_MAX_RATIO = 1.5
+_broker_priced_at: dict[int, datetime] = {}
+
+
+def has_fresh_broker_price(instrument_id: int) -> bool:
+    at = _broker_priced_at.get(instrument_id)
+    return at is not None and now_utc() - at <= BROKER_PRICE_HOLD
+
+
+def set_broker_price(instrument: Instrument, price_gbp: float) -> bool:
+    """Take a broker's live GBP price for a Yahoo-priced instrument. Returns False (and changes
+    nothing) for manual instruments, a non-positive price, or one implausibly far from the price
+    already held. The caller commits."""
+    if instrument.price_source != PriceSource.yahoo or price_gbp <= 0:
+        return False
+    reference = instrument.last_price_gbp
+    if reference and reference > 0:
+        ratio = price_gbp / reference
+        if ratio > BROKER_PRICE_MAX_RATIO or ratio < 1 / BROKER_PRICE_MAX_RATIO:
+            return False
+    instrument.last_price_gbp = round(price_gbp, 6)
+    instrument.last_price_at = now_utc_naive()
+    _broker_priced_at[instrument.id] = now_utc()
+    return True
+
 
 def with_tracked_ids(db: Session, instrument_ids: list[int] | set[int]) -> set[int]:
     """`instrument_ids` plus the Yahoo instruments any of them follow."""
@@ -303,9 +334,10 @@ def refresh_quotes(db: Session, provider: PriceProvider, force: bool = False) ->
             )
 
             instrument.last_price_native = q.last
-            instrument.last_price_gbp = round(price_native_gbp, 6)
+            if not has_fresh_broker_price(instrument.id):
+                instrument.last_price_gbp = round(price_native_gbp, 6)
+                instrument.last_price_at = now_utc_naive()
             instrument.prev_close_gbp = round(prev_native_gbp, 6)
-            instrument.last_price_at = now_utc_naive()
             instrument.last_bar_date = q.bar_date
             instrument.last_fetch_error = None
             _upsert_instrument_price(db, instrument.id, q.bar_date, q.last, price_native_gbp)

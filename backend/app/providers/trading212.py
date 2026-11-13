@@ -1,6 +1,7 @@
 """Read-only client for the Trading 212 Public API (https://docs.trading212.com/api).
 
-Only the endpoints the sync needs: account summary and the three history lists. Auth is HTTP
+Only the endpoints the app needs: account summary, the three history lists the sync reads, and
+open positions for live prices. Auth is HTTP
 Basic with `API_KEY:API_SECRET`; a key created before secrets existed is sent bare in the
 `Authorization` header (the API's "legacy" scheme). Rate limits are per account and tight on the
 history endpoints (6 requests a minute), so every response's `x-ratelimit-*` headers are honoured:
@@ -30,6 +31,10 @@ class Trading212Error(Exception):
 
 
 class Trading212AuthError(Trading212Error):
+    pass
+
+
+class Trading212RateLimited(Trading212Error):
     pass
 
 
@@ -78,7 +83,9 @@ class Trading212Client:
             wait = fallback
         self._sleep(min(max(wait, 0.5), 120.0))
 
-    def _get(self, path: str, params: dict[str, Any] | None = None) -> Any:
+    def _get(self, path: str, params: dict[str, Any] | None = None, *, patient: bool = True) -> Any:
+        """`patient=False` is for calls a page is waiting on: a used-up rate limit raises
+        instead of sleeping until the window resets."""
         url = path if path.startswith("http") else f"{self._base}{path}"
         for _ in range(_MAX_429_RETRIES + 1):
             try:
@@ -87,6 +94,8 @@ class Trading212Client:
                 raise Trading212Error(f"Couldn't reach Trading 212: {exc}") from exc
 
             if response.status_code == 429:
+                if not patient:
+                    raise Trading212RateLimited("Trading 212 is rate-limiting requests; trying again shortly")
                 self._wait_for_reset(response, fallback=10.0)
                 continue
             if response.status_code == 401:
@@ -98,7 +107,7 @@ class Trading212Client:
             if response.status_code >= 400:
                 raise Trading212Error(f"Trading 212 returned HTTP {response.status_code}: {response.text[:200]}")
 
-            if response.headers.get("x-ratelimit-remaining") == "0":
+            if patient and response.headers.get("x-ratelimit-remaining") == "0":
                 self._wait_for_reset(response, fallback=10.0)
             try:
                 return response.json()
@@ -110,6 +119,11 @@ class Trading212Client:
 
     def account_summary(self) -> dict[str, Any]:
         return self._get("/api/v0/equity/account/summary")
+
+    def positions(self) -> list[dict[str, Any]]:
+        """Every open position with its current price and value (1 request a second)."""
+        data = self._get("/api/v0/equity/positions", patient=False)
+        return list(data) if isinstance(data, list) else []
 
     def _paged(
         self, path: str, stop_after_page: Callable[[list[dict]], bool] | None = None

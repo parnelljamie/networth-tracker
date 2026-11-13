@@ -23,6 +23,13 @@ export function minutesSince(value: string, from: Date = new Date()): number {
   return Math.max(0, Math.round((from.getTime() - parseUtc(value).getTime()) / 60_000))
 }
 
+/** A backend timestamp as a local clock time, "14:32". */
+export function formatTime(value: string): string {
+  const d = parseUtc(value)
+  if (Number.isNaN(d.getTime())) return "—"
+  return format(d, "HH:mm")
+}
+
 /** "just now", "5 min ago", "3 h ago", "2 days ago" for a UTC timestamp. */
 export function timeAgo(value: string, from: Date = new Date()): string {
   const minutes = Math.floor((from.getTime() - parseUtc(value).getTime()) / 60_000)

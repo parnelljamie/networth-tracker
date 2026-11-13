@@ -20,7 +20,7 @@ import { togglePrivacyMode, usePrivacyMode } from "@/lib/privacy"
 import { toggleTheme, useTheme } from "@/lib/theme"
 import { cn } from "@/lib/utils"
 import { HealthDot } from "./HealthDot"
-import { COLUMN, SECTION_LINKS, TOOL_LINKS } from "./nav"
+import { COLUMN, LIVE_LINK, SECTION_LINKS, TOOL_LINKS } from "./nav"
 
 /** A light-dismiss popover anchored under its trigger (bell, People menu). */
 function Popover({
@@ -352,6 +352,9 @@ export function Masthead({ onOpenNav }: { onOpenNav: () => void }) {
           <nav aria-label="Main" className="flex min-w-0 flex-1 flex-wrap items-center gap-x-5 lg:gap-x-7">
             <NavLink to="/" end className={navLinkClass}>
               Overview
+            </NavLink>
+            <NavLink to={LIVE_LINK.to} className={navLinkClass}>
+              {LIVE_LINK.label}
             </NavLink>
             <PeopleMenu />
             {SECTION_LINKS.map((l) => (

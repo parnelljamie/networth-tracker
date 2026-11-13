@@ -33,7 +33,7 @@ from app.models.people import Person
 from app.models.positions import Position
 from app.models.recurring import RecurringPlan
 from app.models.transactions import Transaction
-from app.providers.trading212 import Trading212AuthError, Trading212Client
+from app.providers.trading212 import Trading212AuthError, Trading212Client, Trading212RateLimited
 from app.schemas.account import AccountCreate, OwnerShareIn
 from app.schemas.recurring import PlanAllocationIn, RecurringPlanCreate, RecurringPlanUpdate
 from app.services import broker_secrets, recurring_service, trading212_service
@@ -104,6 +104,14 @@ class FakeClient:
 
     def account_summary(self) -> dict:
         return {"currency": self.currency, "id": 1, "totalValue": 0}
+
+    live_positions: list[dict] = []
+    live_error: Exception | None = None
+
+    def positions(self) -> list[dict]:
+        if self.live_error is not None:
+            raise self.live_error
+        return list(self.live_positions)
 
     def _paged(self, name: str, stop):
         items = self._data[name]
@@ -676,3 +684,136 @@ def test_an_already_recorded_share_transfer_does_not_hold_later_syncs(db: Sessio
     client._data["orders"].insert(0, _order(2, "VUSAl_EQ", "BUY", 1, 8000, 80.0, "2026-05-02T09:30:00Z"))
     link = trading212_service.sync_account(db, account.id, fake_provider, _factory(client))
     assert link.status == "needs_review" and link.status_message == "1 new trade"
+
+
+# ---------------------------------------------------------------------------
+# Live prices
+# ---------------------------------------------------------------------------
+
+
+def _live_position(ticker: str, quantity: float, value: float, *, price: float = 0.0,
+                   isin: str = "IE00B3XXRP09", currency: str = "GBX") -> dict:
+    return {
+        "instrument": {"ticker": ticker, "isin": isin, "name": "Vanguard S&P 500", "currency": currency},
+        "quantity": quantity,
+        "currentPrice": price,
+        "walletImpact": {"currency": "GBP", "currentValue": value, "totalCost": 0, "unrealizedProfitLoss": 0},
+    }
+
+
+@pytest.fixture()
+def live_account(db: Session, fake_provider, monkeypatch: pytest.MonkeyPatch):
+    """A linked ISA holding 10 VUSA (a Yahoo instrument last priced at GBP 80), synced and accepted."""
+    from app.services import price_service
+
+    monkeypatch.setattr(trading212_service, "_live_last", {})
+    monkeypatch.setattr(price_service, "_broker_priced_at", {})
+    account = _isa(db)
+    instrument = Instrument(
+        symbol="VUSA.L", name="Vanguard S&P 500", quote_currency="GBp", price_source=PriceSource.yahoo,
+        last_price_gbp=80.0,
+    )
+    db.add(instrument)
+    db.commit()
+    client = FakeClient(orders=[_order(1, "VUSAl_EQ", "BUY", 10, 7500, 750.0, "2026-03-02T09:30:00Z")],
+                        transactions=[_deposit("d1", 1000, "2026-03-01T08:00:00Z")])
+    _connect(db, account, client)
+    trading212_service.sync_account(db, account.id, fake_provider, _factory(client))
+    trading212_service.accept(db, account.id, fake_provider)
+    return account, instrument, client
+
+
+def test_live_prices_take_trading212s_value_per_share(db: Session, fake_provider, live_account):
+    account, instrument, client = live_account
+    client.live_positions = [_live_position("VUSAl_EQ", 10, 812.5, price=8125)]
+
+    [result] = trading212_service.refresh_live_prices(db, fake_provider, _factory(client))
+
+    assert (result.status, result.priced, result.units_differ) == ("ok", 1, False)
+    db.refresh(instrument)
+    assert instrument.last_price_gbp == 81.25  # pounds, though Trading 212 quotes it in pence
+    assert instrument.last_price_at is not None
+
+
+def test_yahoo_refresh_keeps_a_fresh_live_price_but_still_takes_the_previous_close(
+    db: Session, fake_provider, live_account
+):
+    from app.core.clock import today
+    from app.services import price_service
+
+    account, instrument, client = live_account
+    client.live_positions = [_live_position("VUSAl_EQ", 10, 812.5)]
+    trading212_service.refresh_live_prices(db, fake_provider, _factory(client))
+
+    fake_provider.set_quote("VUSA.L", last=8100.0, prev_close=8000.0, bar_date=today())
+    price_service.refresh_quotes(db, fake_provider, force=True)
+
+    db.refresh(instrument)
+    assert instrument.last_price_gbp == 81.25  # Trading 212's, not Yahoo's delayed 81.00
+    assert instrument.prev_close_gbp == 80.0
+    assert price_service.day_change_contribution(instrument, 10, today()) == pytest.approx(12.5)
+
+
+def test_live_price_far_from_the_held_price_is_not_applied(db: Session, fake_provider, live_account):
+    account, instrument, client = live_account
+    client.live_positions = [_live_position("VUSAl_EQ", 10, 8125.0)]  # 100x: a mismatched listing
+
+    [result] = trading212_service.refresh_live_prices(db, fake_provider, _factory(client))
+
+    assert result.priced == 0
+    db.refresh(instrument)
+    assert instrument.last_price_gbp == 80.0
+
+
+def test_live_prices_spot_a_trade_the_ledger_has_not_got_and_sync_it(
+    db: Session, fake_provider, live_account, monkeypatch: pytest.MonkeyPatch
+):
+    account, instrument, client = live_account
+    started: list[int] = []
+    monkeypatch.setattr(trading212_service, "start_sync", lambda db, account_id, *a, **k: started.append(account_id))
+    client.live_positions = [_live_position("VUSAl_EQ", 12, 960.0)]
+
+    [result] = trading212_service.refresh_live_prices(db, fake_provider, _factory(client))
+    assert result.units_differ and started == []  # synced a moment ago: not again yet
+
+    link = trading212_service.get_link(db, account.id)
+    link.last_synced_at = link.last_synced_at - trading212_service.LIVE_RESYNC_INTERVAL * 2
+    db.commit()
+    monkeypatch.setattr(trading212_service, "_live_last", {})
+    trading212_service.refresh_live_prices(db, fake_provider, _factory(client))
+    assert started == [account.id]
+
+
+def test_live_prices_are_throttled_and_report_errors(db: Session, fake_provider, live_account):
+    account, instrument, client = live_account
+    client.live_error = Trading212RateLimited("slow down")
+    [busy] = trading212_service.refresh_live_prices(db, fake_provider, _factory(client))
+    assert busy.status == "busy"
+
+    client.live_error = None
+    client.live_positions = [_live_position("VUSAl_EQ", 10, 812.5)]
+    [again] = trading212_service.refresh_live_prices(db, fake_provider, _factory(client))
+    assert again is busy  # within LIVE_MIN_INTERVAL: answered from the last result, no request
+
+
+def test_live_endpoint_with_no_linked_accounts(client):
+    assert client.post("/api/trading212/live").json() == []
+
+
+def test_client_positions_never_waits_on_the_rate_limit():
+    slept: list[float] = []
+    state = {"limited": False}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if state["limited"]:
+            return httpx.Response(429, headers={"x-ratelimit-reset": "1005"})
+        return httpx.Response(200, headers={"x-ratelimit-remaining": "0", "x-ratelimit-reset": "1001"},
+                              json=[{"quantity": 1}])
+
+    http = httpx.Client(transport=httpx.MockTransport(handler))
+    client = Trading212Client("KEY", "SECRET", "live", http=http, sleep=slept.append, clock=lambda: 1000.0)
+    assert client.positions() == [{"quantity": 1}]
+    state["limited"] = True
+    with pytest.raises(Trading212RateLimited):
+        client.positions()
+    assert slept == []

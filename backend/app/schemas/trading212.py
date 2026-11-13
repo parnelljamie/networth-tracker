@@ -45,6 +45,21 @@ class Trading212LinkOut(BaseModel):
     pending_batch_id: int | None = None
 
 
+class Trading212LiveOut(BaseModel):
+    """One linked account's live-price fetch (POST /api/trading212/live)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    account_id: int
+    status: Literal["ok", "busy", "error"]
+    message: str | None = None
+    # Holdings whose price was taken from Trading 212.
+    priced: int
+    # Trading 212 holds different units from the ledger: a trade is waiting to be synced.
+    units_differ: bool
+    fetched_at: datetime
+
+
 class Trading212ChangeRow(BaseModel):
     date: _Date
     type: str

@@ -1363,6 +1363,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/trading212/live": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Live Prices */
+        post: operations["live_prices_api_trading212_live_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/trading212/changes": {
         parameters: {
             query?: never;
@@ -3788,6 +3805,30 @@ export interface components {
         Trading212LinkUpdate: {
             /** Auto Sync */
             auto_sync: boolean;
+        };
+        /**
+         * Trading212LiveOut
+         * @description One linked account's live-price fetch (POST /api/trading212/live).
+         */
+        Trading212LiveOut: {
+            /** Account Id */
+            account_id: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ok" | "busy" | "error";
+            /** Message */
+            message?: string | null;
+            /** Priced */
+            priced: number;
+            /** Units Differ */
+            units_differ: boolean;
+            /**
+             * Fetched At
+             * Format: date-time
+             */
+            fetched_at: string;
         };
         /**
          * Trading212NewAccountIn
@@ -7321,6 +7362,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Trading212LinkOut"][];
+                };
+            };
+        };
+    };
+    live_prices_api_trading212_live_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Trading212LiveOut"][];
                 };
             };
         };

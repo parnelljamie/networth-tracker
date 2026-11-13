@@ -17,6 +17,9 @@ interface AccountHistoryChartProps {
   value: number[]
   netContributions?: (number | null)[]
   height?: number
+  /** Scale the value axis to the data instead of starting it at zero, so day-to-day moves
+   *  show (the Live page). The default keeps zero in view, which is honest for long histories. */
+  fitToData?: boolean
 }
 
 function TooltipContent({ active, payload, label }: any) {
@@ -36,7 +39,7 @@ function TooltipContent({ active, payload, label }: any) {
   )
 }
 
-export function AccountHistoryChart({ dates, value, netContributions, height = 260 }: AccountHistoryChartProps) {
+export function AccountHistoryChart({ dates, value, netContributions, height = 260, fitToData = false }: AccountHistoryChartProps) {
   const privacy = usePrivacyMode()
   const hasContributions = netContributions?.some((v) => v !== null && v !== undefined)
 
@@ -67,8 +70,9 @@ export function AccountHistoryChart({ dates, value, netContributions, height = 2
             tick={{ fill: "var(--ink-muted)", fontSize: 11 }}
             tickFormatter={(v) => (privacy ? "•••" : formatGBP(v, { compact: true }))}
             width={64}
+            domain={fitToData ? ["auto", "auto"] : undefined}
           />
-          <ReferenceLine y={0} stroke="var(--axis)" />
+          {!fitToData && <ReferenceLine y={0} stroke="var(--axis)" />}
           <Tooltip content={<TooltipContent />} />
           <Line type="monotone" dataKey="Value" stroke="var(--ink)" strokeWidth={2} dot={false} isAnimationActive={false} />
           {hasContributions && (

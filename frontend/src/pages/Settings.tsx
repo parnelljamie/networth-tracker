@@ -32,6 +32,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { PcSyncCard } from "@/components/sync/PcSyncCard"
 import { PhoneSyncCard } from "@/components/sync/PhoneSyncCard"
+import { StartPageCard } from "@/components/StartPageCard"
 import { Trading212SettingsCard } from "@/components/Trading212SettingsCard"
 import { UpdatesCard } from "@/components/UpdatesCard"
 import { Switch } from "@/components/ui/switch"
@@ -143,6 +144,7 @@ export function Settings() {
         </>
       )}
 
+      <StartPageCard />
       <UpdatesCard />
       <AboutCard />
     </div>

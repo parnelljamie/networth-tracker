@@ -13,6 +13,7 @@ from app.schemas.trading212 import (
     Trading212ConnectIn,
     Trading212LinkOut,
     Trading212LinkUpdate,
+    Trading212LiveOut,
     Trading212NewAccountIn,
 )
 from app.services import trading212_service
@@ -57,6 +58,14 @@ def sync_all(
     db: Session = Depends(get_db), provider: PriceProvider = Depends(get_price_provider)
 ) -> list[Trading212LinkOut]:
     return [Trading212LinkOut.model_validate(link) for link in trading212_service.start_sync_all(db, provider)]
+
+
+# POST, not GET: it goes to the network (like prices/refresh). The Live page calls it while open.
+@router.post("/live", response_model=list[Trading212LiveOut])
+def live_prices(
+    db: Session = Depends(get_db), provider: PriceProvider = Depends(get_price_provider)
+) -> list[Trading212LiveOut]:
+    return [Trading212LiveOut.model_validate(r) for r in trading212_service.refresh_live_prices(db, provider)]
 
 
 @router.get("/changes", response_model=list[Trading212ChangesOut])

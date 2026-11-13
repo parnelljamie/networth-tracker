@@ -23,7 +23,7 @@ import re
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
@@ -45,13 +45,14 @@ from app.models.accounts import Account
 from app.models.broker_links import BrokerLink
 from app.models.imports import ImportBatch
 from app.models.instruments import Instrument
+from app.models.positions import Position
 from app.models.recurring import RecurringPlan
 from app.models.transactions import Transaction
 from app.providers.base import PriceProvider
-from app.providers.trading212 import Trading212Client, Trading212Error
+from app.providers.trading212 import Trading212Client, Trading212Error, Trading212RateLimited
 from app.schemas.account import AccountCreate, OwnerShareIn
 from app.schemas.instrument import InstrumentCreate
-from app.services import account_service, broker_secrets, instrument_service
+from app.services import account_service, broker_secrets, instrument_service, price_service
 from app.services.broker_secrets import BrokerCredentials
 from app.services.importers import matching
 from app.services.importers import service as importer
@@ -913,3 +914,116 @@ def reset_interrupted(db: Session) -> None:
         if link.status == "running" and not is_running(link.account_id):
             link.status, link.status_message = "error", "The last sync was interrupted. Sync again."
     db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Live prices: what the Trading 212 app itself is showing, for the Live page
+# ---------------------------------------------------------------------------
+
+# The positions endpoint allows a request a second; the Live page asks every 20 seconds or so.
+# Anything sooner (two windows, the phone) is answered from the last result.
+LIVE_MIN_INTERVAL = timedelta(seconds=10)
+# Units that differ from Trading 212's mean a trade the ledger hasn't got yet: pull it in, but
+# not more often than this (the history endpoints allow 6 requests a minute).
+LIVE_RESYNC_INTERVAL = timedelta(minutes=10)
+_UNITS_TOLERANCE = 1e-6
+
+
+@dataclass
+class LivePrices:
+    account_id: int
+    status: str  # ok | busy | error
+    message: str | None = None
+    priced: int = 0
+    # Trading 212 holds different units from the ledger: a trade is waiting to be synced.
+    units_differ: bool = False
+    fetched_at: datetime = field(default_factory=now_utc_naive)
+
+
+_live_last: dict[int, LivePrices] = {}
+_live_lock = threading.Lock()
+
+
+def _live_instrument(db: Session, item: dict) -> Instrument | None:
+    """The instrument a Trading 212 position is recorded as: the alias the sync saved, else ISIN."""
+    info = item.get("instrument") or {}
+    ticker = info.get("ticker") or item.get("ticker")
+    instrument_id = matching._alias_lookup(db, PROFILE, ticker) if ticker else None
+    if instrument_id is not None:
+        return db.get(Instrument, instrument_id)
+    isin = info.get("isin")
+    if isin:
+        return db.scalars(select(Instrument).where(Instrument.isin == isin)).first()
+    return None
+
+
+def apply_live_positions(db: Session, account_id: int, items: list[dict]) -> LivePrices:
+    """Take each position's current GBP price (its value / quantity, so pence and foreign
+    currencies are already converted by Trading 212) and compare its units with the ledger's."""
+    held = {
+        p.instrument_id: p.units
+        for p in db.scalars(select(Position).where(Position.account_id == account_id)).all()
+    }
+    result = LivePrices(account_id=account_id, status="ok")
+    seen: dict[int, float] = {}
+    for item in items:
+        quantity = _money(item.get("quantity"))
+        if quantity <= _UNITS_TOLERANCE:
+            continue
+        instrument = _live_instrument(db, item)
+        if instrument is None:
+            result.units_differ = True  # a holding the ledger has never seen
+            continue
+        seen[instrument.id] = seen.get(instrument.id, 0.0) + quantity
+        wallet = item.get("walletImpact") or {}
+        if (wallet.get("currency") or "GBP").upper() != "GBP":
+            continue
+        value = _money(wallet.get("currentValue"))
+        if value > 0 and price_service.set_broker_price(instrument, value / quantity):
+            result.priced += 1
+    if any(abs(seen.get(iid, 0.0) - units) > _UNITS_TOLERANCE for iid, units in held.items()) or any(
+        iid not in held for iid in seen
+    ):
+        result.units_differ = True
+    db.commit()
+    return result
+
+
+def refresh_live_prices(
+    db: Session,
+    provider: PriceProvider | None,
+    client_factory: ClientFactory = _default_client,
+) -> list[LivePrices]:
+    """Fetch every linked account's open positions and take their prices. Only ever called from
+    an explicit POST (the Live page polls it while it is open), never from a GET."""
+    results: list[LivePrices] = []
+    for link in list_links(db):
+        account_id = link.account_id
+        with _live_lock:
+            last = _live_last.get(account_id)
+            if last is not None and now_utc_naive() - last.fetched_at < LIVE_MIN_INTERVAL:
+                results.append(last)
+                continue
+        creds = broker_secrets.load(PROVIDER, account_id)
+        if creds is None:
+            result = LivePrices(account_id, "error", "The saved API key is missing. Connect the account again.")
+        else:
+            try:
+                with client_factory(creds, link.environment) as client:
+                    items = client.positions()
+                result = apply_live_positions(db, account_id, items)
+            except Trading212RateLimited as exc:
+                result = LivePrices(account_id, "busy", str(exc))
+            except Trading212Error as exc:
+                result = LivePrices(account_id, "error", str(exc))
+        with _live_lock:
+            _live_last[account_id] = result
+        results.append(result)
+
+        if (
+            result.units_differ
+            and link.status not in ("running", "needs_review")
+            and (link.last_synced_at is None or now_utc_naive() - link.last_synced_at > LIVE_RESYNC_INTERVAL)
+        ):
+            start_sync(db, account_id, provider, client_factory)
+    return results
