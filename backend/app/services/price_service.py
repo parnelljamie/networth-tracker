@@ -133,14 +133,16 @@ def price_gbp(db: Session, instrument: Instrument, on: date, live: bool) -> Pric
 
 
 def day_change_contribution(instrument: Instrument, units: float, on: date, db: Session | None = None) -> float:
-    """docs/03-domain-logic.md §1 "Day change": 0 for non-Yahoo or not-refreshed-today instruments.
+    """docs/03-domain-logic.md §1 "Day change": 0 unless the instrument's latest quote is a bar
+    for `on` itself. A refresh at the weekend, on a market holiday or before the exchange opens
+    returns the previous session's bar, and that session's move is not today's.
     A manual instrument that tracks a Yahoo one (`db` given) moves by the tracked day change."""
     quoted = instrument
     if instrument.price_source == PriceSource.manual and db is not None:
         quoted = tracked_instrument(db, instrument) or instrument
     if quoted.price_source != PriceSource.yahoo:
         return 0.0
-    if quoted.last_price_at is None or quoted.last_price_at.date() != on:
+    if quoted.last_bar_date != on:
         return 0.0
     if not quoted.last_price_gbp or quoted.prev_close_gbp is None:
         return 0.0
@@ -269,10 +271,14 @@ def refresh_quotes(db: Session, provider: PriceProvider, force: bool = False) ->
         _backoff_until = None
 
         fx_rates: dict[str, float] = {}
+        # Yesterday's close is converted at yesterday's rate, so the day change of a foreign
+        # holding includes the currency move, as a broker's own figure does.
+        prev_fx_rates: dict[str, float] = {}
         for currency, symbol in fx_symbols.items():
             q = quotes.get(symbol)
             if q is not None:
                 fx_rates[currency] = q.last
+                prev_fx_rates[currency] = q.prev_close if q.prev_close > 0 else q.last
                 _upsert_fx_rate(db, currency, q.bar_date, q.last)
 
         refreshed = 0
@@ -285,7 +291,7 @@ def refresh_quotes(db: Session, provider: PriceProvider, force: bool = False) ->
                 continue
             try:
                 price_native_gbp = to_gbp(q.last, instrument.quote_currency, fx_rates)
-                prev_native_gbp = to_gbp(q.prev_close, instrument.quote_currency, fx_rates)
+                prev_native_gbp = to_gbp(q.prev_close, instrument.quote_currency, prev_fx_rates)
             except MissingFxRate:
                 error = f"missing FX rate for {major_currency(instrument.quote_currency)[0]}"
                 instrument.last_fetch_error = error
@@ -300,6 +306,7 @@ def refresh_quotes(db: Session, provider: PriceProvider, force: bool = False) ->
             instrument.last_price_gbp = round(price_native_gbp, 6)
             instrument.prev_close_gbp = round(prev_native_gbp, 6)
             instrument.last_price_at = now_utc_naive()
+            instrument.last_bar_date = q.bar_date
             instrument.last_fetch_error = None
             _upsert_instrument_price(db, instrument.id, q.bar_date, q.last, price_native_gbp)
             refreshed += 1

@@ -15,7 +15,7 @@ export function useNetWorthCurrent(personId?: number) {
       if (error) throw error
       return data
     },
-    refetchInterval: 5 * 60_000,
+    refetchInterval: 60_000,
   })
 }
 

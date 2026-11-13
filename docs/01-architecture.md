@@ -128,7 +128,7 @@ workflow (`.github/workflows/release.yml`) builds both platforms from one tag.
 2. Run Alembic `upgrade head` programmatically.
 3. `seed_service.ensure_defaults()`: default settings rows, tax-year rules, the `Base` scenario.
 4. Start the APScheduler `BackgroundScheduler(timezone="Europe/London")`.
-5. Submit `jobs.startup_job()` to a background thread (never block startup): `recurring_service.record_due()`, then `snapshot_service.catch_up()`.
+5. Submit `jobs.startup_job()` to a background thread (never block startup): `recurring_service.record_due()`, a price refresh, then `snapshot_service.catch_up()`.
 6. On shutdown: `scheduler.shutdown(wait=False)`.
 
 ## Database setup (`app/db.py`)
@@ -142,7 +142,7 @@ workflow (`.github/workflows/release.yml`) builds both platforms from one tag.
 
 | Job | Trigger (Europe/London) | Does |
 |---|---|---|
-| `refresh_prices` | every `price_refresh_minutes` (default 15), Mon–Fri 08:00–21:30 | `price_service.refresh_quotes()` for held instruments + FX |
+| `refresh_prices` | every `price_refresh_minutes` (default 15), Mon–Fri 08:00–21:45, and once at startup (before `catch_up`) | `price_service.refresh_quotes(force=True)` for held instruments + FX. Forced: the schedule is the throttle |
 | `daily_snapshot` | daily 22:15 | refresh prices once more, write today's `account_snapshots` |
 | `record_recurring` | daily 07:00 and at startup (before `catch_up`) | `recurring_service.record_due()` creates pending transactions/entries |
 | `backup` | daily 22:30, and on app close | SQLite online backup to `data/backups/networth-YYYY-MM-DD.db`, keep newest N; also copied to the `backup_copy_dir` setting if set (a failed copy is logged, the local backup stands) |

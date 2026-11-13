@@ -172,3 +172,55 @@ def test_manual_price_falls_back_to_typed_price_before_any_history(db: Session):
     result = price_service.price_gbp(db, instrument, date(2018, 6, 1), live=True)
     assert result.price_gbp == 9.696
     assert result.is_stale is True
+
+
+def test_day_change_ignores_a_bar_from_an_earlier_day(db: Session):
+    """A refresh at the weekend or before the exchange opens returns the last session's bar:
+    that session's move must not be reported as today's."""
+    from datetime import timedelta
+
+    from app.core.clock import today
+
+    instrument = _instrument(db, "AAPL", "USD")
+    _hold(db, instrument.id)
+    provider = FakeProvider()
+    earlier = today() - timedelta(days=2)
+    provider.set_quote("AAPL", last=200.0, prev_close=190.0, bar_date=earlier)
+    provider.set_quote("USDGBP=X", last=0.80, prev_close=0.80, bar_date=earlier)
+
+    price_service.refresh_quotes(db, provider, force=True)
+    db.refresh(instrument)
+
+    assert instrument.last_price_gbp == 160.0  # the price itself still updates
+    assert instrument.last_bar_date == earlier
+    assert price_service.day_change_contribution(instrument, 10, today()) == 0.0
+
+
+def test_day_change_counts_todays_bar(db: Session):
+    from app.core.clock import today
+
+    instrument = _instrument(db, "VUSA.L", "GBp")
+    _hold(db, instrument.id)
+    provider = FakeProvider()
+    provider.set_quote("VUSA.L", last=9731.0, prev_close=9700.0, bar_date=today())
+
+    price_service.refresh_quotes(db, provider, force=True)
+    db.refresh(instrument)
+
+    assert round(price_service.day_change_contribution(instrument, 10, today()), 2) == 3.1
+
+
+def test_day_change_of_a_foreign_holding_includes_the_currency_move(db: Session):
+    from app.core.clock import today
+
+    instrument = _instrument(db, "AAPL", "USD")
+    _hold(db, instrument.id)
+    provider = FakeProvider()
+    provider.set_quote("AAPL", last=200.0, prev_close=200.0, bar_date=today())
+    provider.set_quote("USDGBP=X", last=0.80, prev_close=0.76, bar_date=today())
+
+    price_service.refresh_quotes(db, provider, force=True)
+    db.refresh(instrument)
+
+    assert instrument.prev_close_gbp == 152.0  # yesterday's close at yesterday's rate
+    assert round(price_service.day_change_contribution(instrument, 10, today()), 2) == 80.0

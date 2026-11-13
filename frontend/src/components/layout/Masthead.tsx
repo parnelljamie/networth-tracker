@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button"
 import { apiErrorMessage } from "@/lib/api-error"
 import { openAddAccount, setAddAccountOpen, setQuickUpdateOpen, useDialogsState } from "@/lib/appDialogs"
 import { openCommandPalette } from "@/lib/commandPalette"
-import { daysAgoLabel, formatDate } from "@/lib/dates"
+import { daysAgoLabel, formatDate, minutesSince } from "@/lib/dates"
 import { togglePrivacyMode, usePrivacyMode } from "@/lib/privacy"
 import { toggleTheme, useTheme } from "@/lib/theme"
 import { cn } from "@/lib/utils"
@@ -158,7 +158,7 @@ function PendingBell() {
 
 function lastRefreshLabel(lastRefreshAt: string | null | undefined): string {
   if (!lastRefreshAt) return "Prices not refreshed yet"
-  const minutesAgo = Math.max(0, Math.round((Date.now() - new Date(lastRefreshAt).getTime()) / 60_000))
+  const minutesAgo = minutesSince(lastRefreshAt)
   if (minutesAgo < 1) return "Updated just now"
   if (minutesAgo < 60) return `Updated ${minutesAgo}m ago`
   return `Updated ${daysAgoLabel(Math.floor(minutesAgo / (60 * 24)))}`

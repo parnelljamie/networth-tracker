@@ -213,6 +213,7 @@ balance and is ignored by the schedule builder.
 | last_price_gbp | REAL, null | cache |
 | prev_close_gbp | REAL, null | cache, for day change |
 | last_price_at | ts, null | |
+| last_bar_date | date, null | The trading day the latest quote belongs to. Day change counts only when it is today |
 | last_fetch_error | TEXT, null | |
 
 Prices are REAL with up to 6 dp (fund prices can have 4+ dp). Do not round to 2 dp.

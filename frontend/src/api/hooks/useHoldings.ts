@@ -5,6 +5,11 @@ import type { components } from "@/api/schema"
 export type Holdings = components["schemas"]["Holdings"]
 export type HoldingPosition = components["schemas"]["HoldingPosition"]
 
+/** Prices are refreshed in the background (the 15-minute job, Trading 212 live prices) with
+ *  nothing to tell an open page, so values read from them are re-read this often. These are
+ *  local reads of cached quotes, never a network call. */
+export const LIVE_REFETCH_MS = 60_000
+
 async function fetchHoldings(accountId: number) {
   const { data, error } = await apiClient.GET("/api/accounts/{account_id}/holdings", {
     params: { path: { account_id: accountId } },
@@ -21,6 +26,7 @@ export function useHoldingsForAccounts(accountIds: number[]) {
     queries: accountIds.map((accountId) => ({
       queryKey: ["holdings", accountId],
       queryFn: () => fetchHoldings(accountId),
+      refetchInterval: LIVE_REFETCH_MS,
     })),
   })
 }
@@ -41,6 +47,7 @@ export function useHoldings(accountId: number | undefined) {
     queryKey: ["holdings", accountId],
     queryFn: () => fetchHoldings(accountId!),
     enabled: accountId !== undefined,
+    refetchInterval: LIVE_REFETCH_MS,
   })
 }
 

@@ -52,7 +52,10 @@ Then: `sign = -1 if category in LIABILITY_CATEGORIES else 1`.
 5. No price at all → value 0 for that position and a warning string.
 
 **Day change** (holdings): `Σ units × (last_price_gbp − prev_close_gbp)` for Yahoo instruments
-whose `last_price_at` is today; others contribute 0.
+whose `last_bar_date` is today; others contribute 0. A refresh at the weekend, on a market holiday
+or before the exchange opens returns the previous session's bar, and that session's move is not
+today's. `prev_close_gbp` is the previous close at the previous day's FX rate, so a foreign
+holding's day change includes the currency move.
 
 **Scoping to people**
 - `scoped_value = value × share(person)`; household = `value × Σ shares of people with include_in_household`.
@@ -151,10 +154,14 @@ price_gbp, fixed = fix_pence_glitch(price_gbp, instrument.last_price_gbp or prev
 2. Instruments = Yahoo instruments with a position in any non-archived account.
 3. If not `force` and every one has `last_price_at` newer than `price_refresh_minutes` → `recent`.
 4. Fetch quotes (instruments + FX) in one provider call.
-5. Per instrument: normalise, write `last_price_native/gbp`, `prev_close_gbp`, `last_price_at = now_utc`,
-   clear `last_fetch_error`; upsert `instrument_prices(bar_date, close_native, close_gbp, 'yahoo')`.
+5. Per instrument: normalise, write `last_price_native/gbp`, `prev_close_gbp` (at the FX quote's
+   previous close), `last_bar_date = bar_date`, `last_price_at = now_utc`, clear `last_fetch_error`;
+   upsert `instrument_prices(bar_date, close_native, close_gbp, 'yahoo')`.
    Missing symbol → `last_fetch_error = "no data"`.
 6. Commit, return counts and failures.
+
+The scheduled job and the startup refresh pass `force=True`: step 3 would otherwise skip a tick
+that lands a fraction of a second short of the interval after the previous one.
 
 ### History backfill (`ensure_history(db, instrument_ids, start, end)`)
 Find missing trading ranges per instrument (compare against existing `instrument_prices` dates;

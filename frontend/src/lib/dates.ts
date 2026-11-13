@@ -12,11 +12,20 @@ export function daysAgoLabel(days: number): string {
   return `${days} days ago`
 }
 
-/** "just now", "5 min ago", "3 h ago", "2 days ago" for a UTC timestamp. A timestamp with no
- *  zone (the backend stores UTC without one) is read as UTC, not local time. */
+/** A backend timestamp as a Date. The backend stores UTC without a zone, and `new Date()` would
+ *  read such a string as local time: an hour out all summer. Dates and zoned values pass through. */
+export function parseUtc(value: string): Date {
+  return new Date(/T\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/.test(value) ? `${value}Z` : value)
+}
+
+/** Whole minutes from a backend timestamp to `from`, never negative. */
+export function minutesSince(value: string, from: Date = new Date()): number {
+  return Math.max(0, Math.round((from.getTime() - parseUtc(value).getTime()) / 60_000))
+}
+
+/** "just now", "5 min ago", "3 h ago", "2 days ago" for a UTC timestamp. */
 export function timeAgo(value: string, from: Date = new Date()): string {
-  const utc = /T\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/.test(value) ? `${value}Z` : value
-  const minutes = Math.floor((from.getTime() - new Date(utc).getTime()) / 60_000)
+  const minutes = Math.floor((from.getTime() - parseUtc(value).getTime()) / 60_000)
   if (Number.isNaN(minutes)) return "—"
   if (minutes < 1) return "just now"
   if (minutes < 60) return `${minutes} min ago`
@@ -27,7 +36,7 @@ export function timeAgo(value: string, from: Date = new Date()): string {
 
 /** Whole calendar days from `value` (a date or UTC timestamp) to `from`, never negative. */
 export function daysSince(value: string, from: Date = new Date()): number | null {
-  const d = new Date(value)
+  const d = parseUtc(value)
   if (Number.isNaN(d.getTime())) return null
   const start = new Date(d.getFullYear(), d.getMonth(), d.getDate())
   const end = new Date(from.getFullYear(), from.getMonth(), from.getDate())

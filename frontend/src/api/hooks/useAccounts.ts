@@ -31,6 +31,7 @@ export function useAccounts(filters: AccountFilters = {}) {
       if (error) throw error
       return data
     },
+    refetchInterval: 60_000, // values follow background price refreshes (see LIVE_REFETCH_MS)
   })
 }
 

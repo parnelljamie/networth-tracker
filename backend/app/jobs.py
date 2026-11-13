@@ -20,7 +20,10 @@ _provider = default_provider()
 def refresh_prices_job() -> None:
     try:
         with SessionLocal() as db:
-            result = snapshot_service.refresh_quotes(db, _provider)
+            # Forced: the schedule is the throttle. Left to the "refreshed within the last 15
+            # minutes" check, a tick lands a fraction of a second short of 15 minutes after the
+            # previous one and is skipped, so prices would only update every half hour.
+            result = snapshot_service.refresh_quotes(db, _provider, force=True)
             logger.info(
                 "refresh_prices: status=%s refreshed=%d failed=%d",
                 result.status,
@@ -81,11 +84,16 @@ def catch_up_job() -> None:
 
 def startup_job(role: str = "desktop") -> None:
     """Runs once at startup. The 07:00 record_due trigger only fires if the app happens to be
-    open then, so due plans are recorded here too, before catch_up snapshots today. Each job
+    open then, so due plans are recorded here too, before catch_up snapshots today. Prices are
+    refreshed for the same reason. Each job
     catches and logs its own failures, so one failing never stops the other."""
     # The phone doesn't record plans: the PC does, and the phone gets them at the next sync.
     if role != "phone":
         record_due_plans_job()
+    # The 15-minute trigger only runs on weekdays from 08:00, so without this an app opened at
+    # the weekend or early in the morning shows whatever it last fetched, possibly days ago.
+    # Before catch_up, so today's snapshot is written at the fresh prices.
+    refresh_prices_job()
     catch_up_job()
     if role != "phone":
         try:

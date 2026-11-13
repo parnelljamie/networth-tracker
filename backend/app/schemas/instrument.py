@@ -45,6 +45,7 @@ class InstrumentOut(BaseModel):
     last_price_gbp: float | None
     prev_close_gbp: float | None
     last_price_at: datetime | None
+    last_bar_date: _Date | None = None
     last_fetch_error: str | None
 
 

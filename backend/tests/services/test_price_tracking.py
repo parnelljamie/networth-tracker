@@ -74,6 +74,7 @@ def test_tracked_instrument_uses_the_live_quote_and_its_day_change(db: Session, 
     fund.tracks_instrument_id = x1.id
     x1.last_price_gbp, x1.prev_close_gbp = 4.20, 3.85  # today's quote, not yet a stored row
     x1.last_price_at = datetime(2026, 9, 11, 14, 0)
+    x1.last_bar_date = date(2026, 9, 11)
     db.commit()
     today = date(2026, 9, 11)
 

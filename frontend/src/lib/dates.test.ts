@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { daysAgoLabel, daysSince, formatDate, rangeStartIso, timeAgo } from "./dates"
+import { daysAgoLabel, daysSince, formatDate, minutesSince, parseUtc, rangeStartIso, timeAgo } from "./dates"
 import { birthdayAtAge, monthsUntil } from "./pension"
 
 describe("formatDate", () => {
@@ -17,6 +17,21 @@ describe("daysAgoLabel", () => {
     expect(daysAgoLabel(0)).toBe("today")
     expect(daysAgoLabel(1)).toBe("1 day ago")
     expect(daysAgoLabel(12)).toBe("12 days ago")
+  })
+})
+
+describe("minutesSince", () => {
+  const now = new Date("2026-07-01T12:00:00Z") // British Summer Time
+
+  it("reads a timestamp with no zone as UTC, not local time", () => {
+    expect(minutesSince("2026-07-01T11:58:00", now)).toBe(2)
+    expect(minutesSince("2026-07-01T11:58:00.116126", now)).toBe(2)
+    expect(parseUtc("2026-07-01T11:58:00").toISOString()).toBe("2026-07-01T11:58:00.000Z")
+  })
+
+  it("leaves zoned timestamps alone and never goes negative", () => {
+    expect(minutesSince("2026-07-01T11:58:00Z", now)).toBe(2)
+    expect(minutesSince("2026-07-01T13:00:00Z", now)).toBe(0)
   })
 })
 

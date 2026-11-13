@@ -2532,6 +2532,8 @@ export interface components {
             prev_close_gbp: number | null;
             /** Last Price At */
             last_price_at: string | null;
+            /** Last Bar Date */
+            last_bar_date?: string | null;
             /** Last Fetch Error */
             last_fetch_error: string | null;
         };

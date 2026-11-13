@@ -41,4 +41,7 @@ class Instrument(TimestampMixin, Base):
     last_price_gbp: Mapped[float | None] = mapped_column(Float, nullable=True)
     prev_close_gbp: Mapped[float | None] = mapped_column(Float, nullable=True)
     last_price_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # The trading day the latest quote belongs to (the exchange's date). A refresh at the weekend
+    # or before the market opens returns an earlier day's bar, which is not a move "today".
+    last_bar_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     last_fetch_error: Mapped[str | None] = mapped_column(String, nullable=True)

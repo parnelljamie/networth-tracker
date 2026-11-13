@@ -64,7 +64,8 @@ def get_current(db: Session, person_id: int | None = None) -> NetWorthCurrent:
     stale_accounts: list[StaleAccount] = []
 
     by_asset_class_totals: dict[str, float] = {}
-    movers: list[dict] = []
+    # Keyed by instrument: the same fund held in two accounts is one mover, not two rows.
+    movers: dict[int, dict] = {}
     prices_updated_at = None
 
     for account in accounts:
@@ -72,7 +73,9 @@ def get_current(db: Session, person_id: int | None = None) -> NetWorthCurrent:
         summaries.append(summary)
 
         if summary.staleness in ("warn", "alert"):
-            days_since = valuation_service.days_since_last_entry(db, account, on)
+            # days_since_update, not days_since_last_entry: a holdings account has no balance
+            # entries, so its stale prices would never be listed.
+            days_since = valuation_service.days_since_update(db, account, on)
             if days_since is not None:
                 stale_accounts.append(
                     StaleAccount(
@@ -124,16 +127,18 @@ def get_current(db: Session, person_id: int | None = None) -> NetWorthCurrent:
 
                 day_change = price_service.day_change_contribution(pos.instrument, pos.units, on, db) * account_share
                 if day_change != 0:
-                    prev_value = scoped_value - day_change
-                    movers.append(
+                    mover = movers.setdefault(
+                        pos.instrument.id,
                         {
                             "instrument_id": pos.instrument.id,
                             "symbol": pos.instrument.symbol,
                             "name": pos.instrument.name,
-                            "day_change_gbp": round(day_change, 2),
-                            "day_change_pct": round(day_change / prev_value, 4) if prev_value else None,
-                        }
+                            "day_change_gbp": 0.0,
+                            "value_gbp": 0.0,
+                        },
                     )
+                    mover["day_change_gbp"] += day_change
+                    mover["value_gbp"] += scoped_value
 
     by_category = [
         CategoryShare(
@@ -151,7 +156,16 @@ def get_current(db: Session, person_id: int | None = None) -> NetWorthCurrent:
         {"asset_class": ac, "value_gbp": round(v, 2)}
         for ac, v in sorted(by_asset_class_totals.items(), key=lambda kv: kv[0])
     ]
-    top_movers = sorted(movers, key=lambda m: abs(m["day_change_gbp"]), reverse=True)[:TOP_MOVERS_LIMIT]
+    top_movers = []
+    for mover in sorted(movers.values(), key=lambda m: abs(m["day_change_gbp"]), reverse=True)[:TOP_MOVERS_LIMIT]:
+        prev_value = mover.pop("value_gbp") - mover["day_change_gbp"]
+        top_movers.append(
+            {
+                **mover,
+                "day_change_gbp": round(mover["day_change_gbp"], 2),
+                "day_change_pct": round(mover["day_change_gbp"] / prev_value, 4) if prev_value else None,
+            }
+        )
 
     pending_transactions = (
         db.scalar(select(func.count()).select_from(Transaction).where(Transaction.status == TxnStatus.pending))

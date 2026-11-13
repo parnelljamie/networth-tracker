@@ -1,7 +1,7 @@
 import { TriangleAlert } from "lucide-react"
 import { useHealth } from "@/api/hooks/useHealth"
 import { usePricesStatus } from "@/api/hooks/useInstruments"
-import { daysAgoLabel } from "@/lib/dates"
+import { daysAgoLabel, minutesSince } from "@/lib/dates"
 
 /** App-shell status pill: "● Live · 2m ago" / "▲ Prices 3 days old" per docs/05-ui.md. */
 export function HealthDot() {
@@ -19,10 +19,7 @@ export function HealthDot() {
   }
 
   if (status?.last_refresh_at) {
-    const minutesAgo = Math.max(
-      0,
-      Math.round((Date.now() - new Date(status.last_refresh_at).getTime()) / 60_000)
-    )
+    const minutesAgo = minutesSince(status.last_refresh_at)
     const daysOld = Math.floor(minutesAgo / (60 * 24))
     if (daysOld >= 1) {
       return (
