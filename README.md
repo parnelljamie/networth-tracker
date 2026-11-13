@@ -111,8 +111,9 @@ pairing, though Windows may ask once more whether to let Waymark through the fir
   every person's age under the date axis. It also shows allocation, liquidity and debt, the
   per-person split, today's movers, ISA allowance, upcoming regular payments and milestones.
 - **Live**: your shares and funds as they stand now: total value, today's move, a value chart
-  from a week to all time, and every holding with a 30-day sparkline, price, today's change and
-  total return. With a Trading 212 account connected it shows Trading 212's own live prices while
+  from today's five-minute prices to all time, and every holding with a 30-day sparkline, price,
+  today's change and total return. Switch between everything, investment accounts and pensions,
+  and open any holding for its own price chart and where it is held. With a Trading 212 account connected it shows Trading 212's own live prices while
   the page is open. You can make it the page Waymark opens on (Settings → Start page).
 - **Person**: the same view for one person, with their accounts.
 - **Property & Mortgage**: value against mortgage balance, equity and loan-to-value, mortgage-free
@@ -153,6 +154,7 @@ pairing, though Windows may ask once more whether to let Waymark through the fir
 | When | What |
 |---|---|
 | Every 15 minutes, weekdays 08:00–21:45, and at startup | Refresh prices and exchange rates |
+| Every 5 minutes while a 1D chart is open | Fetch the day's five-minute prices from Yahoo |
 | Every 20 seconds while the Live page is open | Read live prices from Trading 212, if an account is connected |
 | Daily at 07:00, and at startup | Record due regular payments as pending transactions to confirm |
 | Daily at 22:15 | Take the day's snapshot of every account |

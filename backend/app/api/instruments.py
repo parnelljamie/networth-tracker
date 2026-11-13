@@ -14,6 +14,9 @@ from app.schemas.instrument import (
     InstrumentPriceOut,
     InstrumentSearchResultOut,
     InstrumentUpdate,
+    IntradayOut,
+    IntradayPointOut,
+    IntradayRequest,
     PricesStatusOut,
     RefreshResultOut,
     StaleInstrumentOut,
@@ -83,6 +86,23 @@ def refresh_prices(
     return RefreshResultOut(
         status=result.status, refreshed=result.refreshed, failed=result.failed, at=result.at
     )
+
+
+@router.post("/prices/intraday", response_model=list[IntradayOut])
+def intraday_prices(
+    payload: IntradayRequest,
+    db: Session = Depends(get_db),
+    provider: PriceProvider = Depends(get_price_provider),
+) -> list[IntradayOut]:
+    """POST because it goes to Yahoo (at most once per instrument every five minutes)."""
+    return [
+        IntradayOut(
+            instrument_id=s.instrument_id,
+            prev_close_gbp=s.prev_close_gbp,
+            points=[IntradayPointOut(at=at, price_gbp=price) for at, price in s.points],
+        )
+        for s in price_service.intraday(db, provider, payload.instrument_ids)
+    ]
 
 
 @router.get("/prices/status", response_model=PricesStatusOut)

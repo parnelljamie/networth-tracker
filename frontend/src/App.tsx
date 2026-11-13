@@ -10,6 +10,7 @@ import { Live } from "@/pages/Live"
 import { AccountDetail } from "@/pages/AccountDetail"
 import { Goals } from "@/pages/Goals"
 import { Import } from "@/pages/Import"
+import { InstrumentPage } from "@/pages/Instrument"
 import { Investments } from "@/pages/Investments"
 import { OtherAssets } from "@/pages/OtherAssets"
 import { Overview } from "@/pages/Overview"
@@ -87,6 +88,7 @@ function App() {
           <Route element={<AppLayout />}>
             <Route index element={<Overview />} />
             <Route path="live" element={<Live />} />
+            <Route path="instruments/:id" element={<InstrumentPage />} />
             <Route path="people/:id" element={<Person />} />
             <Route path="accounts/:id" element={<AccountDetail />} />
             <Route path="property" element={<Property />} />

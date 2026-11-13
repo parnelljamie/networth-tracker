@@ -40,6 +40,7 @@ const MAX_PROJECTION_YEARS = 30
 
 /** How the hero describes the range-change figure ("▲ £62,380 over the year"). */
 const RANGE_WORDS: Record<ChartRange, string> = {
+  "1D": "today",
   "1W": "over the week",
   "1M": "over the month",
   "3M": "over three months",

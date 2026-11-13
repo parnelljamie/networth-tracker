@@ -9,7 +9,13 @@ from datetime import date, timedelta
 
 import yfinance as yf
 
-from app.providers.base import DailyClose, InstrumentMetadata, InstrumentSearchResult, Quote
+from app.providers.base import (
+    DailyClose,
+    InstrumentMetadata,
+    InstrumentSearchResult,
+    IntradayBar,
+    Quote,
+)
 
 logger = logging.getLogger("app.providers.yahoo")
 
@@ -123,6 +129,43 @@ class YahooProvider:
                 except Exception:
                     logger.exception("Could not extract history for %s", symbol)
         return out
+
+    def intraday(self, symbols: list[str]) -> dict[str, list[IntradayBar]]:
+        """Five-minute prices for each symbol's latest trading day."""
+        out: dict[str, list[IntradayBar]] = {}
+        for i in range(0, len(symbols), _CHUNK_SIZE):
+            chunk = symbols[i : i + _CHUNK_SIZE]
+            try:
+                df = yf.download(
+                    chunk,
+                    period="1d",
+                    interval="5m",
+                    group_by="ticker",
+                    auto_adjust=False,
+                    actions=False,
+                    progress=False,
+                    threads=True,
+                    timeout=20,
+                )
+            except Exception:
+                logger.exception("Yahoo intraday download failed for chunk %s", chunk)
+                continue
+            for symbol in chunk:
+                try:
+                    closes = _closes_for_symbol(df, symbol, chunk)
+                    if closes is None or closes.empty:
+                        continue
+                    out[symbol] = [IntradayBar(at=_utc_naive(idx), price=float(v)) for idx, v in closes.items()]
+                except Exception:
+                    logger.exception("Could not extract intraday prices for %s", symbol)
+        return out
+
+
+def _utc_naive(timestamp):  # noqa: ANN001, ANN202
+    """A pandas bar timestamp as UTC without tzinfo. Intraday frames are zone-aware."""
+    if timestamp.tzinfo is not None:
+        timestamp = timestamp.tz_convert("UTC").tz_localize(None)
+    return timestamp.to_pydatetime()
 
 
 def _closes_for_symbol(df, symbol: str, requested: list[str]):

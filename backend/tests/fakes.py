@@ -4,7 +4,13 @@ from __future__ import annotations
 
 from datetime import date
 
-from app.providers.base import DailyClose, InstrumentMetadata, InstrumentSearchResult, Quote
+from app.providers.base import (
+    DailyClose,
+    InstrumentMetadata,
+    InstrumentSearchResult,
+    IntradayBar,
+    Quote,
+)
 
 
 class FakeProvider:
@@ -13,7 +19,9 @@ class FakeProvider:
         self._metadata: dict[str, InstrumentMetadata] = {}
         self._history: dict[str, list[DailyClose]] = {}
         self._search_results: list[InstrumentSearchResult] = []
+        self._intraday: dict[str, list[IntradayBar]] = {}
         self.quote_calls: list[list[str]] = []
+        self.intraday_calls: list[list[str]] = []
 
     def set_quote(self, symbol: str, last: float, prev_close: float, bar_date: date) -> None:
         self._quotes[symbol] = Quote(last=last, prev_close=prev_close, bar_date=bar_date)
@@ -41,3 +49,10 @@ class FakeProvider:
 
     def history(self, symbols: list[str], start: date, end: date) -> dict[str, list[DailyClose]]:
         return {s: self._history[s] for s in symbols if s in self._history}
+
+    def set_intraday(self, symbol: str, bars: list[IntradayBar]) -> None:
+        self._intraday[symbol] = bars
+
+    def intraday(self, symbols: list[str]) -> dict[str, list[IntradayBar]]:
+        self.intraday_calls.append(list(symbols))
+        return {s: self._intraday[s] for s in symbols if s in self._intraday}

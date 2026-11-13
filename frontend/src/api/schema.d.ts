@@ -627,6 +627,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/prices/intraday": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Intraday Prices
+         * @description POST because it goes to Yahoo (at most once per instrument every five minutes).
+         */
+        post: operations["intraday_prices_api_prices_intraday_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/prices/status": {
         parameters: {
             query?: never;
@@ -2595,6 +2615,30 @@ export interface components {
             manual_price_date?: string | null;
             /** Tracks Instrument Id */
             tracks_instrument_id?: number | null;
+        };
+        /** IntradayOut */
+        IntradayOut: {
+            /** Instrument Id */
+            instrument_id: number;
+            /** Prev Close Gbp */
+            prev_close_gbp: number | null;
+            /** Points */
+            points: components["schemas"]["IntradayPointOut"][];
+        };
+        /** IntradayPointOut */
+        IntradayPointOut: {
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /** Price Gbp */
+            price_gbp: number;
+        };
+        /** IntradayRequest */
+        IntradayRequest: {
+            /** Instrument Ids */
+            instrument_ids: number[];
         };
         /** JobStatusOut */
         JobStatusOut: {
@@ -5508,6 +5552,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RefreshResultOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    intraday_prices_api_prices_intraday_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IntradayRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntradayOut"][];
                 };
             };
             /** @description Validation Error */

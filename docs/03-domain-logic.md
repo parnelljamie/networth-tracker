@@ -174,6 +174,14 @@ positions from Trading 212 and takes `walletImpact.currentValue / quantity` as t
 - Units that differ from the ledger's mean a trade the sync hasn't brought in: a background sync
   is started, at most every 10 minutes. Results are reused for 10 seconds per account.
 
+### Intraday prices (`price_service.intraday(db, provider, instrument_ids)`)
+The 1D charts. `provider.intraday(symbols)` returns five-minute bars (UTC) for each symbol's latest
+trading day; each price goes through `to_gbp` at the latest stored FX rate (the currency's own move
+within the day is not drawn) and `fix_pence_glitch`. Held in memory for 5 minutes per instrument and
+never stored: the daily close is what history keeps. Manual instruments, a missing FX rate and any
+provider failure give no points rather than an error. The page adds the holdings up
+(`frontend/src/lib/intraday.ts`).
+
 ### History backfill (`ensure_history(db, instrument_ids, start, end)`)
 Find missing trading ranges per instrument (compare against existing `instrument_prices` dates;
 ignore weekends), fetch history in chunks, normalise each close with the FX close for the same date

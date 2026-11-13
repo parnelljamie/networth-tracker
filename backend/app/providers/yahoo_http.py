@@ -13,7 +13,13 @@ from typing import Any
 
 import httpx
 
-from app.providers.base import DailyClose, InstrumentMetadata, InstrumentSearchResult, Quote
+from app.providers.base import (
+    DailyClose,
+    InstrumentMetadata,
+    InstrumentSearchResult,
+    IntradayBar,
+    Quote,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +46,17 @@ def _closes(result: dict[str, Any]) -> list[DailyClose]:
             continue
         by_date[_bar_date(int(ts), offset)] = float(close)  # a later bar for the same day wins
     return [DailyClose(date=d, close=c) for d, c in sorted(by_date.items())]
+
+
+def _intraday_bars(result: dict[str, Any]) -> list[IntradayBar]:
+    timestamps = result.get("timestamp") or []
+    quote = ((result.get("indicators") or {}).get("quote") or [{}])[0]
+    closes = quote.get("close") or []
+    return [
+        IntradayBar(at=datetime.fromtimestamp(int(ts), UTC).replace(tzinfo=None), price=float(close))
+        for ts, close in zip(timestamps, closes, strict=False)
+        if close is not None
+    ]
 
 
 class YahooHttpProvider:
@@ -127,4 +144,17 @@ class YahooHttpProvider:
                     out[symbol] = [c for c in _closes(result) if start <= c.date <= end]
             except Exception:
                 logger.exception("Yahoo history failed for %s", symbol)
+        return out
+
+    def intraday(self, symbols: list[str]) -> dict[str, list[IntradayBar]]:
+        """Five-minute prices for each symbol's latest trading day."""
+        out: dict[str, list[IntradayBar]] = {}
+        for symbol in symbols:
+            try:
+                result = self._chart(symbol, {"range": "1d", "interval": "5m"})
+                bars = _intraday_bars(result) if result else []
+                if bars:
+                    out[symbol] = bars
+            except Exception:
+                logger.exception("Yahoo intraday failed for %s", symbol)
         return out

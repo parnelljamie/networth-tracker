@@ -84,3 +84,18 @@ class PricesStatusOut(BaseModel):
     next_refresh_at: datetime | None
     market_open: bool | None
     stale: list[StaleInstrumentOut]
+
+
+class IntradayRequest(BaseModel):
+    instrument_ids: list[int]
+
+
+class IntradayPointOut(BaseModel):
+    at: datetime
+    price_gbp: float
+
+
+class IntradayOut(BaseModel):
+    instrument_id: int
+    prev_close_gbp: float | None
+    points: list[IntradayPointOut]

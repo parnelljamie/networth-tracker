@@ -4,7 +4,7 @@ the provider returns native prices and currency codes only."""
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from typing import Protocol
 
 
@@ -37,8 +37,15 @@ class DailyClose:
     close: float
 
 
+@dataclass
+class IntradayBar:
+    at: datetime  # UTC, no tzinfo (as stored timestamps are)
+    price: float
+
+
 class PriceProvider(Protocol):
     def search(self, query: str) -> list[InstrumentSearchResult]: ...
     def metadata(self, symbol: str) -> InstrumentMetadata: ...
     def quotes(self, symbols: list[str]) -> dict[str, Quote]: ...
     def history(self, symbols: list[str], start: date, end: date) -> dict[str, list[DailyClose]]: ...
+    def intraday(self, symbols: list[str]) -> dict[str, list[IntradayBar]]: ...

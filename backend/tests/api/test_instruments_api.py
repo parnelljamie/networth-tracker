@@ -53,3 +53,24 @@ def test_search_uses_provider(client: TestClient, fake_provider: FakeProvider):
     r = client.get("/api/instruments/search", params={"q": "apple"})
     assert r.status_code == 200
     assert r.json()[0]["symbol"] == "AAPL"
+
+
+def test_intraday_prices_endpoint(client: TestClient, fake_provider: FakeProvider):
+    from datetime import datetime
+
+    from app.providers.base import IntradayBar
+    from app.services import price_service
+
+    price_service._intraday_cache.clear()
+    fake_provider.set_metadata(
+        "VUSA.L", InstrumentMetadata(name="Vanguard S&P 500", currency="GBp", exchange="LSE", quote_type="ETF")
+    )
+    instrument_id = client.post("/api/instruments", json={"symbol": "VUSA.L", "price_source": "yahoo"}).json()["id"]
+    fake_provider.set_intraday("VUSA.L", [IntradayBar(at=datetime(2026, 11, 13, 9, 0), price=9000.0)])
+
+    r = client.post("/api/prices/intraday", json={"instrument_ids": [instrument_id, 999]})
+
+    assert r.status_code == 200, r.text
+    assert r.json() == [
+        {"instrument_id": instrument_id, "prev_close_gbp": None, "points": [{"at": "2026-11-13T09:00:00", "price_gbp": 90.0}]}
+    ]

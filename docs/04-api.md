@@ -122,6 +122,7 @@ accounts: age of latest entry) or price age (holdings: `warn` if any held price 
 | PATCH | `/instruments/{id}` | `{name?, asset_class?, isin?, manual_price_gbp?, manual_price_date?, tracks_instrument_id?}` (tracking: manual instrument following a Yahoo one, 422 otherwise; price changes rebuild holders' snapshots) |
 | GET | `/instruments/{id}/prices?from&to` | `[{date, close_gbp}]` |
 | POST | `/prices/refresh` | `{force: false}` → `{status: ok|partial|already_running|recent, refreshed, failed: [{symbol, error}], at}` |
+| POST | `/prices/intraday` | `{instrument_ids: [..]}` → `[{instrument_id, prev_close_gbp, points: [{at, price_gbp}]}]`: five-minute prices over each instrument's latest trading day. POST because it goes to Yahoo, at most once per instrument every 5 minutes. No points for manual instruments or on failure |
 | GET | `/prices/status` | `{last_refresh_at, next_refresh_at, market_open, stale: [{instrument_id, symbol, last_price_at}]}` |
 
 ## Holdings and transactions (holdings accounts)

@@ -1,5 +1,5 @@
 import { useEffect } from "react"
-import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query"
+import { keepPreviousData, useQueries, useQuery, useQueryClient } from "@tanstack/react-query"
 import { apiClient } from "@/api/client"
 import type { components } from "@/api/schema"
 import { LIVE_REFETCH_MS } from "@/api/hooks/useHoldings"
@@ -56,5 +56,45 @@ export function useInstrumentPrices(instrumentIds: number[], dateFrom: string) {
       },
       staleTime: 15 * LIVE_REFETCH_MS,
     })),
+  })
+}
+
+/** Yahoo's five-minute bars change at most this often, and the backend answers anything sooner
+ *  from memory. */
+const INTRADAY_MS = 5 * 60_000
+
+/** Five-minute prices over the latest trading day, for the 1D charts. A POST because the backend
+ *  goes to Yahoo for them; instruments it can't price come back with no points. */
+export function useIntraday(instrumentIds: number[], enabled = true) {
+  const ids = [...instrumentIds].sort((a, b) => a - b)
+  return useQuery({
+    queryKey: ["intraday", ids],
+    enabled: enabled && ids.length > 0,
+    queryFn: async () => {
+      const { data, error } = await apiClient.POST("/api/prices/intraday", { body: { instrument_ids: ids } })
+      if (error) throw error
+      return data
+    },
+    refetchInterval: INTRADAY_MS,
+    staleTime: INTRADAY_MS,
+    placeholderData: keepPreviousData,
+    retry: false,
+  })
+}
+
+/** One instrument, re-read as often as holdings are so its price follows the refresh job. */
+export function useInstrument(instrumentId: number | undefined) {
+  return useQuery({
+    queryKey: ["instruments", instrumentId],
+    enabled: instrumentId !== undefined && Number.isFinite(instrumentId),
+    queryFn: async () => {
+      const { data, error } = await apiClient.GET("/api/instruments/{instrument_id}", {
+        params: { path: { instrument_id: instrumentId! } },
+      })
+      if (error) throw error
+      return data
+    },
+    refetchInterval: LIVE_REFETCH_MS,
+    retry: false,
   })
 }

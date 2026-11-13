@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { Link } from "react-router"
 import { toast } from "sonner"
 import { useDeleteHolding, useHoldings, useSetCash, useSetHolding } from "@/api/hooks/useHoldings"
 import {
@@ -109,7 +110,9 @@ export function HoldingsTab({ accountId }: { accountId: number }) {
                 <tr key={pos.instrument.id} className="border-b border-border">
                   <td className="py-2">
                     <div className="flex items-center gap-1.5">
-                      <span className="font-mono-figures text-ink">{pos.instrument.symbol}</span>
+                      <Link to={`/instruments/${pos.instrument.id}`} className="font-mono-figures text-ink hover:underline">
+                        {pos.instrument.symbol}
+                      </Link>
                       {pos.instrument.price_source === "manual" && (
                         <button
                           type="button"

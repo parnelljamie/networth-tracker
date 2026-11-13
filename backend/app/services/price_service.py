@@ -352,6 +352,80 @@ def refresh_quotes(db: Session, provider: PriceProvider, force: bool = False) ->
 
 
 # ---------------------------------------------------------------------------
+# Intraday prices (the 1D charts)
+# ---------------------------------------------------------------------------
+
+# Yahoo's five-minute bars change at most that often; anything asked for sooner is answered
+# from memory. Never stored: only today's shape matters, and the daily close is kept elsewhere.
+INTRADAY_TTL = timedelta(minutes=5)
+
+
+@dataclass
+class IntradaySeries:
+    instrument_id: int
+    prev_close_gbp: float | None
+    points: list[tuple[datetime, float]] = field(default_factory=list)
+
+
+_intraday_cache: dict[int, tuple[datetime, list[tuple[datetime, float]]]] = {}
+_intraday_lock = threading.Lock()
+
+
+def _latest_fx_rates(db: Session, currencies: set[str]) -> dict[str, float]:
+    rates: dict[str, float] = {}
+    for currency in currencies:
+        row = db.scalars(
+            select(FxRate).where(FxRate.currency == currency).order_by(FxRate.date.desc()).limit(1)
+        ).first()
+        if row is not None:
+            rates[currency] = row.gbp_per_unit
+    return rates
+
+
+def intraday(db: Session, provider: PriceProvider, instrument_ids: list[int]) -> list[IntradaySeries]:
+    """Five-minute GBP prices over each instrument's latest trading day. Foreign prices are
+    converted at the latest stored rate (the currency's own move within the day is not drawn).
+    Instruments Yahoo doesn't price, and any it fails on, come back with no points."""
+    instruments = [i for i in (db.get(Instrument, iid) for iid in dict.fromkeys(instrument_ids)) if i is not None]
+    now = now_utc_naive()
+    with _intraday_lock:
+        wanted = [
+            i
+            for i in instruments
+            if i.price_source == PriceSource.yahoo
+            and (i.id not in _intraday_cache or now - _intraday_cache[i.id][0] >= INTRADAY_TTL)
+        ]
+        if wanted:
+            try:
+                bars = provider.intraday([i.symbol for i in wanted])
+            except Exception:
+                logger.exception("Intraday prices failed")
+                bars = {}
+            currencies = {major_currency(i.quote_currency)[0] for i in wanted} - {"GBP"}
+            fx_rates = _latest_fx_rates(db, currencies)
+            for instrument in wanted:
+                points: list[tuple[datetime, float]] = []
+                try:
+                    for bar in bars.get(instrument.symbol, []):
+                        price = to_gbp(bar.price, instrument.quote_currency, fx_rates)
+                        price, _ = fix_pence_glitch(price, instrument.last_price_gbp)
+                        if price > 0:
+                            points.append((bar.at, round(price, 6)))
+                except MissingFxRate:
+                    points = []
+                if points:
+                    _intraday_cache[instrument.id] = (now, points)
+        return [
+            IntradaySeries(
+                instrument_id=i.id,
+                prev_close_gbp=i.prev_close_gbp,
+                points=list(_intraday_cache[i.id][1]) if i.id in _intraday_cache else [],
+            )
+            for i in instruments
+        ]
+
+
+# ---------------------------------------------------------------------------
 # History backfill
 # ---------------------------------------------------------------------------
 

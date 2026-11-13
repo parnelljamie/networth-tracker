@@ -159,6 +159,7 @@ class PriceProvider(Protocol):
     def metadata(self, symbol: str) -> InstrumentMetadata: ...          # name, currency, exchange, quote_type
     def quotes(self, symbols: list[str]) -> dict[str, Quote]: ...       # last, prev_close, bar_date
     def history(self, symbols: list[str], start: date, end: date) -> dict[str, list[DailyClose]]: ...
+    def intraday(self, symbols: list[str]) -> dict[str, list[IntradayBar]]: ...
 ```
 
 `YahooProvider` implements it with yfinance (details in `03-domain-logic.md` §3).

@@ -224,3 +224,43 @@ def test_day_change_of_a_foreign_holding_includes_the_currency_move(db: Session)
 
     assert instrument.prev_close_gbp == 152.0  # yesterday's close at yesterday's rate
     assert round(price_service.day_change_contribution(instrument, 10, today()), 2) == 80.0
+
+
+def test_intraday_prices_are_in_pounds_and_reused_within_five_minutes(db: Session):
+    from datetime import datetime
+
+    from app.models.prices import FxRate
+    from app.providers.base import IntradayBar
+
+    price_service._intraday_cache.clear()
+    london = _instrument(db, "VWRP.L", "GBp")
+    london.prev_close_gbp = 109.0
+    american = _instrument(db, "AAPL", "USD")
+    no_rate = _instrument(db, "SAP.DE", "EUR")
+    manual = Instrument(
+        symbol="MANUAL:FUND", name="Fund", quote_currency="GBP", price_source=PriceSource.manual, manual_price_gbp=2.0
+    )
+    db.add(manual)
+    db.add(FxRate(currency="USD", date=date(2026, 11, 12), gbp_per_unit=0.75))
+    db.add(FxRate(currency="USD", date=date(2026, 11, 13), gbp_per_unit=0.8))
+    db.commit()
+
+    provider = FakeProvider()
+    nine = datetime(2026, 11, 13, 9, 0)
+    provider.set_intraday("VWRP.L", [IntradayBar(at=nine, price=11000.0), IntradayBar(at=nine.replace(minute=5), price=11050.0)])
+    provider.set_intraday("AAPL", [IntradayBar(at=nine.replace(hour=14, minute=30), price=200.0)])
+    provider.set_intraday("SAP.DE", [IntradayBar(at=nine, price=150.0)])
+
+    ids = [london.id, american.id, no_rate.id, manual.id]
+    series = {s.instrument_id: s for s in price_service.intraday(db, provider, ids)}
+
+    assert series[london.id].points == [(nine, 110.0), (nine.replace(minute=5), 110.5)]
+    assert series[london.id].prev_close_gbp == 109.0
+    assert series[american.id].points == [(nine.replace(hour=14, minute=30), 160.0)]  # latest rate
+    assert series[no_rate.id].points == []
+    assert series[manual.id].points == []
+    assert provider.intraday_calls == [["VWRP.L", "AAPL", "SAP.DE"]]
+
+    # Asked again straight away: only the one that came back empty is fetched again.
+    price_service.intraday(db, provider, ids)
+    assert provider.intraday_calls[1:] == [["SAP.DE"]]

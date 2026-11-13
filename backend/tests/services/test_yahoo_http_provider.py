@@ -106,3 +106,25 @@ def test_search_maps_quotes_and_falls_back_to_an_exact_symbol():
 
     [exact] = provider.search("0P0000XXXX.L")
     assert exact.symbol == "0P0000XXXX.L"
+
+
+def test_intraday_asks_for_five_minute_bars_and_skips_empty_ones():
+    start = datetime(2026, 11, 13, 8, 0, tzinfo=UTC)
+    payload = _chart("VWRL.L", [])
+    result = payload["chart"]["result"][0]
+    result["timestamp"] = [int(start.timestamp()) + 300 * i for i in range(3)]
+    result["indicators"]["quote"][0]["close"] = [11000.0, None, 11020.0]
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json=payload)
+
+    bars = _provider(handler).intraday(["VWRL.L"])["VWRL.L"]
+
+    assert [(b.at, b.price) for b in bars] == [
+        (datetime(2026, 11, 13, 8, 0), 11000.0),
+        (datetime(2026, 11, 13, 8, 10), 11020.0),
+    ]
+    assert seen[0].url.params["interval"] == "5m"
+    assert seen[0].url.params["range"] == "1d"

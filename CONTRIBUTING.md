@@ -42,7 +42,8 @@ pass. If you think the engine is wrong, open an issue with a worked example.
    `app/services/`**. Services call `app/engine/` for maths.
 7. Every model change ships an **Alembic migration** (SQLite needs `render_as_batch=True`).
 8. **Never call Yahoo/yfinance from a normal GET.** Only the price refresh job, the explicit
-   `POST /api/prices/refresh`, instrument search and instrument creation touch the network.
+   `POST /api/prices/refresh`, `POST /api/prices/intraday`, instrument search and instrument
+   creation touch the network.
 9. After any backend schema or route change, regenerate the TypeScript client with
    `npm run gen:api` (in `frontend/`). Never hand-write API types.
 10. Frontend: all server data goes through TanStack Query hooks in `src/api/hooks/`. All currency

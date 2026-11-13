@@ -2,7 +2,7 @@ import { useEffect, useState } from "react"
 import { Link } from "react-router"
 import { useAccountHistories, useAccounts } from "@/api/hooks/useAccounts"
 import { useHoldingsForAccounts } from "@/api/hooks/useHoldings"
-import { useInstrumentPrices, useTrading212Live } from "@/api/hooks/useLive"
+import { useInstrumentPrices, useIntraday, useTrading212Live } from "@/api/hooks/useLive"
 import { useRole } from "@/api/hooks/useSync"
 import { useTrading212Links } from "@/api/hooks/useTrading212"
 import { AccountHistoryChart } from "@/components/charts/AccountHistoryChart"
@@ -16,16 +16,19 @@ import { Sparkline } from "@/components/Sparkline"
 import { StatTile } from "@/components/StatTile"
 import { Button } from "@/components/ui/button"
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { ALL_HISTORY_FROM, formatTime, rangeStartIso, todayIso, type ChartRange } from "@/lib/dates"
+import { ALL_HISTORY_FROM, formatDate, formatTime, rangeStartIso, todayIso, type ChartRange } from "@/lib/dates"
 import { formatUnits } from "@/lib/format"
+import { portfolioIntraday, withLiveNow } from "@/lib/intraday"
 import { changePct, combineHoldings, periodReturn, sortHoldings, withLivePoint, type LiveSort } from "@/lib/live"
+import { accountsInView, hasBothKinds, setLiveView, useLiveView, type LiveView } from "@/lib/liveView"
 import { isMarketOpen, MARKETS } from "@/lib/markets"
 import { openAddAccount } from "@/lib/appDialogs"
 import { cn } from "@/lib/utils"
 
-const RANGES: ChartRange[] = ["1W", "1M", "3M", "6M", "YTD", "1Y", "All"]
+const RANGES: ChartRange[] = ["1D", "1W", "1M", "3M", "6M", "YTD", "1Y", "All"]
 
 const RANGE_WORDS: Record<ChartRange, string> = {
+  "1D": "today",
   "1W": "over the past week",
   "1M": "over the past month",
   "3M": "over 3 months",
@@ -34,6 +37,18 @@ const RANGE_WORDS: Record<ChartRange, string> = {
   "1Y": "over the past year",
   "5Y": "over 5 years",
   All: "since the start",
+}
+
+const VIEWS: { value: LiveView; label: string }[] = [
+  { value: "all", label: "All" },
+  { value: "investments", label: "Investments" },
+  { value: "pensions", label: "Pensions" },
+]
+
+const EYEBROWS: Record<LiveView, string> = {
+  all: "Stocks and shares, right now",
+  investments: "Investment accounts, right now",
+  pensions: "Pensions, right now",
 }
 
 const SORTS: { value: LiveSort; label: string }[] = [
@@ -73,14 +88,19 @@ function MarketStrip() {
 export function Live() {
   const { data: accounts } = useAccounts()
   const desktop = useRole() === "desktop"
-  const [range, setRange] = useState<ChartRange>("1M")
+  const [range, setRange] = useState<ChartRange>("1D")
+  const now = useNow(60_000)
+  const chosenView = useLiveView()
   const [sort, setSort] = useState<LiveSort>("value")
   const [sparkFrom] = useState(() => rangeStartIso("1M") ?? ALL_HISTORY_FROM)
 
-  const holdingsAccounts = (accounts ?? []).filter((a) => a.valuation_method === "holdings")
+  const everyHoldingsAccount = (accounts ?? []).filter((a) => a.valuation_method === "holdings")
+  // Investments (what a broker's app shows) and pensions can be looked at apart.
+  const { view, accounts: holdingsAccounts } = accountsInView(everyHoldingsAccount, chosenView)
+  const canChooseView = hasBothKinds(everyHoldingsAccount)
   const accountIds = holdingsAccounts.map((a) => a.id)
   const holdingsQueries = useHoldingsForAccounts(accountIds)
-  const histories = useAccountHistories(accountIds, rangeStartIso(range) ?? ALL_HISTORY_FROM)
+  const histories = useAccountHistories(accountIds, (range === "1D" ? rangeStartIso("1W") : rangeStartIso(range)) ?? ALL_HISTORY_FROM)
 
   // Trading 212's own prices, while this page is open (PC only: the phone has no API key).
   const { data: links } = useTrading212Links(desktop)
@@ -93,6 +113,11 @@ export function Live() {
   const sparklines = useInstrumentPrices(
     holdings.map((h) => h.instrumentId),
     sparkFrom
+  )
+
+  const intraday = useIntraday(
+    holdings.map((h) => h.instrumentId),
+    range === "1D"
   )
 
   if (!accounts) return null
@@ -151,12 +176,28 @@ export function Live() {
   const paidIn = series.dates.map((_, i) => paidInOn[Math.min(i, paidInOn.length - 1)] ?? null)
   const period = periodReturn(series.values, paidIn)
 
+  // 1D: the holdings' five-minute prices added up, ending at the live figure.
+  const dayLine =
+    range === "1D" && allLoaded
+      ? portfolioIntraday(
+          holdings.map((h) => ({ instrumentId: h.instrumentId, units: h.units, priceGbp: h.priceGbp })),
+          intraday.data ?? [],
+          cash
+        )
+      : null
+  const dayShown = dayLine ? withLiveNow(dayLine, now, total) : null
+  const dayMove = dayShown ? (dayShown.values.at(-1) ?? dayShown.baseline) - dayShown.baseline : 0
+
   const sorted = sortHoldings(holdings, sort)
   const sparkById = new Map(holdings.map((h, i) => [h.instrumentId, sparklines[i]?.data ?? []]))
 
   return (
     <div className="flex flex-col gap-10 md:gap-12">
-      <PageHeader eyebrow="Stocks and shares, right now" title="Live" actions={<MarketStrip />} />
+      <PageHeader eyebrow={EYEBROWS[view]} title="Live" actions={<MarketStrip />} />
+
+      {canChooseView && (
+        <Segmented options={VIEWS} value={view} onChange={setLiveView} label="Show" className="-mb-4 md:-mb-6" />
+      )}
 
       <section aria-label="Value now" className="flex flex-col gap-2">
         <Money value={total} display className="text-[44px] leading-none tracking-[-0.02em] text-ink sm:text-[64px]" />
@@ -196,14 +237,33 @@ export function Live() {
           </CardAction>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
-          {period && (
-            <p className="flex flex-wrap items-baseline gap-x-2 text-sm text-ink-muted">
-              <DeltaChip amountGbp={period.gainGbp ?? period.changeGbp} pct={period.pct ?? undefined} />
-              {period.gainGbp === null ? "change in value" : "return"} {RANGE_WORDS[range]}
-              {period.gainGbp !== null && <span className="text-xs">(after money paid in or taken out)</span>}
-            </p>
+          {range === "1D" ? (
+            dayShown ? (
+              <>
+                <p className="flex flex-wrap items-baseline gap-x-2 text-sm text-ink-muted">
+                  <DeltaChip amountGbp={dayMove} pct={dayShown.baseline > 0 ? dayMove / dayShown.baseline : undefined} />
+                  {dayShown.day === todayIso() ? "today" : `on ${formatDate(dayShown.day)}, the last trading day`}
+                  <span className="text-xs">(dashed line: previous close)</span>
+                </p>
+                <AccountHistoryChart dates={dayShown.times} value={dayShown.values} height={300} fitToData intraday baseline={dayShown.baseline} />
+              </>
+            ) : (
+              <p className="py-16 text-center text-sm text-ink-muted">
+                {intraday.isPending || !allLoaded ? "Fetching today's prices…" : "No prices for today yet. Try a longer range."}
+              </p>
+            )
+          ) : (
+            <>
+              {period && (
+                <p className="flex flex-wrap items-baseline gap-x-2 text-sm text-ink-muted">
+                  <DeltaChip amountGbp={period.gainGbp ?? period.changeGbp} pct={period.pct ?? undefined} />
+                  {period.gainGbp === null ? "change in value" : "return"} {RANGE_WORDS[range]}
+                  {period.gainGbp !== null && <span className="text-xs">(after money paid in or taken out)</span>}
+                </p>
+              )}
+              <AccountHistoryChart dates={series.dates} value={series.values} height={300} fitToData />
+            </>
           )}
-          <AccountHistoryChart dates={series.dates} value={series.values} height={300} fitToData />
         </CardContent>
       </Card>
 
@@ -235,7 +295,9 @@ export function Live() {
                   return (
                     <tr key={h.instrumentId} className="border-b border-rule-soft align-middle">
                       <td className="py-3 pr-3">
-                        <p className="font-mono-figures text-[13px] text-ink">{h.symbol}</p>
+                        <Link to={`/instruments/${h.instrumentId}`} className="font-mono-figures text-[13px] text-ink hover:underline">
+                          {h.symbol}
+                        </Link>
                         <p className="max-w-[130px] truncate text-xs text-ink-muted sm:max-w-[280px]" title={h.name}>
                           {h.name}
                         </p>

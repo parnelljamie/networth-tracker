@@ -54,7 +54,7 @@ export function todayIso(): string {
   return format(new Date(), "yyyy-MM-dd")
 }
 
-export type ChartRange = "1W" | "1M" | "3M" | "6M" | "YTD" | "1Y" | "5Y" | "All"
+export type ChartRange = "1D" | "1W" | "1M" | "3M" | "6M" | "YTD" | "1Y" | "5Y" | "All"
 
 export const CHART_RANGES: ChartRange[] = ["1W", "1M", "3M", "6M", "YTD", "1Y", "5Y", "All"]
 
@@ -62,6 +62,9 @@ export const CHART_RANGES: ChartRange[] = ["1W", "1M", "3M", "6M", "YTD", "1Y", 
 export function rangeStartDate(range: ChartRange, from: Date = new Date()): Date | null {
   const d = new Date(from)
   switch (range) {
+    case "1D":
+      d.setDate(d.getDate() - 1)
+      return d
     case "1W":
       d.setDate(d.getDate() - 7)
       return d
